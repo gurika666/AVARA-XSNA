@@ -1,0 +1,25 @@
+// prettier-ignore
+
+@import "./settings/variables.scss",
+  "./base/config",
+  "./validators/contains",
+  "./validators/is-length",
+  "./validators/is-size",
+  "./validators/to-bool",
+  "./functions/vwvh-conversion",
+  "./functions/css-clamp",
+  "./mixins/font-feature-settings.scss",
+  "./mixins/letter-case.scss",
+  "./mixins/list-distance",
+  "./mixins/letter-spacing-xd",
+  "./mixins/context",
+  "./mixins/parent-state",
+  "./mixins/parent-hover",
+  "./mixins/placeholder",
+  "./mixins/size",
+  "./mixins/text-crop",
+  "./mixins/transitions",
+  "./mixins/line-clamp",
+  "./plugins/breakpoint-sass/_breakpoint";
+
+  @import "./style";

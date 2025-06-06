@@ -1,0 +1,11 @@
+@each $key, $name in $fonts {
+  @font-face {
+    font-display: swap;
+    font-family: $name;
+    src: font-url("#{$name}.eot") format("embedded-opentype"),
+      font-url("#{$name}.woff2") format("woff2"),
+      font-url("#{$name}.woff") format("woff"),
+      font-url("#{$name}.ttf") format("truetype"),
+      font-url("#{$name}.svg##{$name}") format("svg");
+  }
+}

@@ -1,0 +1,14 @@
+[data-theme="dark"] {
+  --primary-color: var(--color-black);
+  --secondary-color: var(--color-white);
+
+  --selection-fill: var(--secondary-color);
+  --selection-color: var(--primary-color);
+}
+[data-theme="light"] {
+  --primary-color: var(--color-white);
+  --secondary-color: var(--color-black);
+
+  --selection-fill: var(--secondary-color);
+  --selection-color: var(--primary-color);
+}

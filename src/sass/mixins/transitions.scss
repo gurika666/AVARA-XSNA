@@ -1,0 +1,5 @@
+@mixin default-transitions($args...) {
+  transition-property: $args;
+  transition-duration: $default-timing-speed;
+  transition-timing-function: $default-timing-func;
+}

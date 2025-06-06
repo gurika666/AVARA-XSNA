@@ -1,0 +1,19 @@
+//
+// css-clamp mixin - min and max size for responsive
+/// @group Selectors
+/// @param {Number (with unit) | string} $min-size
+/// @param {Number (with unit) | string} $scaler
+/// @param {Number (with unit) | string} $max-size
+/// @param {Enum | ["vw","vh"]} $unit - only get-vw and get-vh supported
+//
+
+@function css-clamp($min-size, $scaler, $max-size: null, $unit: "vw") {
+  $scaler-viewport: if(to-bool($max-size), $scaler, viewport($scaler, $unit));
+  $max-size: if(to-bool($max-size), $max-size, $scaler);
+
+  @return clamp(#{$min-size}, #{$scaler-viewport}, #{$max-size});
+}
+
+@function viewport($value, $unit: "vw") {
+  @return if($unit == "vw", get-vw($value), get-vh($value));
+}

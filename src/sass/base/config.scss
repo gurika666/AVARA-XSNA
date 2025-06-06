@@ -1,0 +1,17 @@
+$asset-base-path: "/" !default;
+
+@function asset($type, $file) {
+  @return url($asset-base-path+$type+"/"+$file);
+}
+
+@function image-url($file) {
+  @return asset("images", $file);
+}
+
+@function bg-vector-url($file) {
+  @return asset("images/svg", $file);
+}
+
+@function font-url($file) {
+  @return asset("fonts", $file);
+}

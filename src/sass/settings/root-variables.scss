@@ -1,0 +1,23 @@
+:root {
+  @each $key, $name in $fonts {
+    --font-family-#{$key}: #{$name};
+  }
+
+  @each $name, $color in $colors {
+    --color-#{$name}: #{$color};
+  }
+
+  @each $size, $i in $sizes {
+    $i: index($sizes, $size);
+
+    @include get-var-vw($i * $square-size, layout-grid-#{$size});
+    --layout-grid-#{$size}-px: #{$i * $square-size};
+  }
+
+  --selection-fill: var(--color-black);
+  --selection-color: var(--color-white);
+
+  --layout-edge: 40px;
+  --layout-offset: 188px;
+  --footer-height: 120px;
+}

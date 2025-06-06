@@ -1,0 +1,18 @@
+@use 'sass:math';
+
+/// Letter Spacing in PX from XD
+/// @param {Length (with unit)} $font-size - font-size of the element
+/// @param {Number (Unitless value)} $letter-spacing - letter-spacing from
+/// @link https://adobexd.uservoice.com/forums/353007-adobe-xd-feature-requests/suggestions/13202904-letter-spacing-in-px
+
+@mixin letter-spacing($font-size, $letter-spacing, $css-variable: false) {
+  $spacing: null;
+
+  @if ($css-variable) {
+    $spacing: calc(#{$font-size} * #{$letter-spacing / 1000});
+  } @else {
+    $spacing: math.div($letter-spacing * $font-size, 1000);
+  }
+
+  letter-spacing: $spacing;
+}

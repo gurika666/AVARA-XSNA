@@ -1,0 +1,16 @@
+//
+/// @group List
+/// @param { String } $distance - padding or margin
+/// @content [Write the style you want to apply to the circle, and it will be added within the @content directive]
+//
+
+@mixin list-distance($offset, $value, $property: "margin") {
+  @if (contains(left right top bottom, $offset) AND is-size($value)) {
+    $selector: if(contains(left top, $offset), "first-child", "last-child");
+
+    &:not(:#{$selector}) {
+      #{$property+'-'+$offset}: $value;
+      @content;
+    }
+  }
+}

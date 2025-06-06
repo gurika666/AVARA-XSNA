@@ -1,0 +1,13 @@
+@use "sass:list";
+
+//
+/// @group Selectors
+/// @param { * } $value - any argument
+/// @return Boolean true or false
+//
+
+@function to-bool($value) {
+  $valid-sides: 0, false, "false", "", null, ();
+
+  @return if(list.index($valid-sides, $value), false, true);
+}

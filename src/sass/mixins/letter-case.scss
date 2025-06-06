@@ -1,0 +1,14 @@
+//
+/// uppercase for texts
+//
+
+@mixin uppercase {
+  text-transform: uppercase;
+  &:lang(ka) {
+    @include font-feature-settings("case");
+  }
+}
+
+@mixin lowercase {
+  text-transform: lowercase;
+}

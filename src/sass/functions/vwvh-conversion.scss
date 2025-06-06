@@ -1,0 +1,35 @@
+@use 'sass:math';
+
+//
+/// @group Selectors
+/// @param {String} $object-size - object sizes (px unit)
+/// @param {String} $css-variable - css variable name (without dash)
+/// @link https://gist.github.com/dospuntocero/c1e19dd3f57c13be83eb8fa4acfb8360
+//
+
+$default-window-width: 1920;
+$default-window-height: 1080;
+$ratio: 1;
+
+@function get-vw($object-size) {
+  $vw: ($default-window-width * 0.01) * 1px;
+
+  @return math.div($object-size, $vw) * $ratio * 1vw;
+}
+@function get-vh($object-size) {
+  $vh: ($default-window-height * 0.01) * 1px;
+
+  @return math.div($object-size, $vh) * $ratio * 1vh;
+}
+
+// using for css variables
+@mixin get-var-vw($object-size, $css-variable) {
+  $value: get-vw($object-size);
+
+  --#{$css-variable}: #{$value};
+}
+@mixin get-var-vh($object-size, $css-variable) {
+  $value: get-vh($object-size);
+
+  --#{$css-variable}: #{$value};
+}

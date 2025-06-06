@@ -1,0 +1,19 @@
+@use "sass:math";
+
+$default-timing-speed: 0.2s;
+$default-timing-func: ease-in-out;
+
+$square-size: 20px;
+
+$sizes: "xxs", "xs", "s", "m", "l", "xl", "xxl", "3xl", "4xl", "5xl";
+
+$colors: (
+  "black": "#000016",
+  "white": "#fff",
+  "transparent": transparent,
+  "firefly": #182833,
+);
+
+$fonts: (
+  "monarch": "WT_Monarch",
+);

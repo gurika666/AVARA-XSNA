@@ -1,0 +1,10 @@
+/// Sizing mixin from width and height
+/// If height is omitted, same as width
+/// @param {Length} $width - element width
+/// @param {Length} $height [$width] - element height
+/// @link https://www.sitepoint.com/bulletproof-function-validate-length-values-sass
+
+@mixin size($width, $height: $width) {
+  width: $width;
+  height: $height;
+}
