@@ -1,4 +1,4 @@
-// app.js - Optimized main application
+// app.js - Optimized main application with streamlined loading
 import * as THREE from "three";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -9,8 +9,9 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { DisplacementScenePass } from './DisplacementScenePass.js';
 import { ChromaticAberrationPass, CursorPlane, createSkyPlane, updateCloudUniforms } from './shader-manager.js';
 import * as GUI from './gui.js';
-import * as AudioController from './audio-Controller.js';
+import * as AudioController from './audio-controller.js';
 import * as VegetationManager from './vegetation-manager.js';
+import * as LoadingManager from './loading-manager.js';
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass;
@@ -46,18 +47,20 @@ const textAppearTimes = [
   { time: 38.8, text: "არაფერს" }, { time: 39.8, text: "არ გეტყვი" }
 ];
 
-let resourcesLoaded = { hdri: false, font: false, displacement: false, glb: false, txthdr: false };
-
-// Loading manager
-const manager = new THREE.LoadingManager();
-manager.onLoad = () => {
-  completeSetup();
-  VegetationManager.createInitialVegetationWhenReady(scene);
-  setTimeout(() => GUI.enableControls(AudioController.getAudioDuration(), VegetationManager.getTreeCount()), 100);
+// Resources to be loaded
+const resources = {
+  hdri: null,
+  txthdr: null,
+  displacement: null,
+  font: null,
+  glb: null,
+  audio: null,
+  vegetation: null
 };
 
 // Initialize
-function init() {
+async function init() {
+  // Setup renderer first
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
@@ -66,21 +69,40 @@ function init() {
   scene.background = new THREE.Color(0x000000);
   scene.fog = new THREE.Fog(0x000000, 30, 100);
   
-  // Setup UI and controllers
+  // Setup UI and show loading screen
   GUI.setupUI(startAnimation, pauseAnimation);
-  GUI.setupScrubber(AudioController.handleScrubberInput, AudioController.handleScrubberChange);
+  GUI.showLoadingScreen();
+  
+  // Initialize controllers
   AudioController.init({ 
     onTimeUpdate: (t, dt) => displacementScenePass?.updateTextBasedOnAudioTime(t, dt, textAppearTimes),
     onScrubComplete: t => displacementScenePass?.resetTextDisplay(t, textAppearTimes)
   });
-  VegetationManager.init(scene, manager);
   
-  // Event listeners
+  // Setup event listeners
+  setupEventListeners();
+  
+  // Start loading all resources
+  try {
+    await loadAllResources();
+    completeSetup();
+  } catch (error) {
+    console.error('Loading failed:', error);
+    GUI.showLoadingError(error.message);
+  }
+}
+
+// Setup event listeners
+function setupEventListeners() {
+  // Window resize
   window.addEventListener('resize', onWindowResize);
+  
+  // Mouse/touch movement
   document.addEventListener('mousemove', e => {
     mouseX = e.clientX - window.innerWidth / 2;
     mouseY = e.clientY - window.innerHeight / 2;
   });
+  
   document.addEventListener('touchmove', e => {
     if (e.touches.length > 0) {
       e.preventDefault();
@@ -89,84 +111,276 @@ function init() {
     }
   }, { passive: false });
   
-  loadResources();
-}
-
-// Load resources
-function loadResources() {
-  // Load textures
-  const txthdrLoader = new RGBELoader(manager);
-  txthdrLoader.load('images/txt.hdr', t => {
-    txthdr = t;
-    txthdr.mapping = THREE.EquirectangularReflectionMapping;
-    resourcesLoaded.txthdr = true;
-  });
-  
-  const hdriLoader = new RGBELoader(manager);
-  hdriLoader.load('images/01.hdr', t => {
-    t.mapping = THREE.EquirectangularReflectionMapping;
-    resourcesLoaded.hdri = true;
-  });
-  
-  textureloader.load('images/displacement-map.png', t => {
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    resourcesLoaded.displacement = true;
-  });
-  
-  // Load font
-  new FontLoader(manager).load('fonts/Monarch_Regular.json', f => {
-    font = f;
-    resourcesLoaded.font = true;
-  });
-  
-  // Load GLB
-  new GLTFLoader(manager).load(config.glb.path, gltf => {
-    gltfModel = gltf.scene;
-    
-    // Apply txthdr to latex materials
-    gltfModel.traverse(child => {
-      if (child.isMesh && child.material?.name?.includes("latex_") && txthdr) {
-        const mat = child.material.clone();
-        mat.envMap = txthdr;
-        mat.envMapIntensity = 1.0;
-        mat.needsUpdate = true;
-        child.material = mat;
+  // Keyboard controls - SPACE for play/pause
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !e.repeat) {
+      e.preventDefault();
+      if (isSetupComplete) {
+        if (isAnimating) {
+          pauseAnimation();
+        } else {
+          startAnimation();
+        }
       }
-    });
-    
-    const { position: p, scale: s, rotation: r } = config.glb;
-    gltfModel.position.copy(p);
-    gltfModel.scale.copy(s);
-    gltfModel.rotation.copy(r);
-    scene.add(gltfModel);
-    
-    // Handle animations
-    if (gltf.animations?.length) {
-      gltfMixer = new THREE.AnimationMixer(gltfModel);
-      gltf.animations.forEach(clip => {
-        const action = gltfMixer.clipAction(clip);
-        action.setLoop(THREE.LoopRepeat);
-        action.timeScale = 0.7;
-        gltfAnimationActions.push(action);
-        if (config.glb.autoplay) action.play();
-      });
     }
-    
-    resourcesLoaded.glb = true;
   });
   
-  AudioController.loadAudio('audio/xsna.mp3');
+  // Setup scrubber
+  GUI.setupScrubber(AudioController.handleScrubberInput, AudioController.handleScrubberChange);
 }
 
-// Complete setup
+// Centralized resource loading
+async function loadAllResources() {
+  let allResourcesLoaded = false;
+  
+  const manager = LoadingManager.create(
+    onProgress, 
+    () => {
+      // This is called when ALL resources tracked by the manager are loaded
+      allResourcesLoaded = true;
+      console.log('LoadingManager reports all resources loaded');
+    },
+    (url) => {
+      console.error('Failed to load:', url);
+    }
+  );
+  
+  // Start all loading tasks
+  const loadingTasks = [
+    // Load HDR textures
+    loadHDRTexture('images/txt.hdr', 'txthdr', manager),
+    loadHDRTexture('images/01.hdr', 'hdri', manager),
+    
+    // Load displacement texture
+    loadTexture('images/displacement-map.png', 'displacement', manager),
+    
+    // Load font
+    loadFont('fonts/Monarch_Regular.json', manager),
+    
+    // Load GLB model
+    loadGLB(config.glb.path, manager),
+    
+    // Load audio (not tracked by manager)
+    loadAudio('audio/xsna.mp3'),
+    
+    // Initialize vegetation (this will use the manager internally)
+    initVegetation(manager)
+  ];
+  
+  // Wait for all promises to resolve
+  await Promise.all(loadingTasks);
+  
+  // Also wait for the manager to report completion
+  if (!allResourcesLoaded) {
+    await new Promise(resolve => {
+      const checkInterval = setInterval(() => {
+        if (allResourcesLoaded) {
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 100);
+      
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        resolve();
+      }, 10000);
+    });
+  }
+  
+  console.log('All resources fully loaded');
+}
+
+// Loading functions
+async function loadHDRTexture(path, key, manager) {
+  return new Promise((resolve, reject) => {
+    new RGBELoader(manager).load(
+      path,
+      texture => {
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        resources[key] = texture;
+        resolve();
+      },
+      undefined,
+      error => reject(new Error(`Failed to load HDR: ${path}`))
+    );
+  });
+}
+
+async function loadTexture(path, key, manager) {
+  return new Promise((resolve, reject) => {
+    new THREE.TextureLoader(manager).load(
+      path,
+      texture => {
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        resources[key] = texture;
+        resolve();
+      },
+      undefined,
+      error => reject(new Error(`Failed to load texture: ${path}`))
+    );
+  });
+}
+
+async function loadFont(path, manager) {
+  return new Promise((resolve, reject) => {
+    new FontLoader(manager).load(
+      path,
+      loadedFont => {
+        font = loadedFont;
+        resources.font = loadedFont;
+        resolve();
+      },
+      undefined,
+      error => reject(new Error('Failed to load font'))
+    );
+  });
+}
+
+async function loadGLB(path, manager) {
+  return new Promise((resolve, reject) => {
+    new GLTFLoader(manager).load(
+      path,
+      gltf => {
+        gltfModel = gltf.scene;
+        
+        // Apply txthdr to latex materials
+        if (resources.txthdr) {
+          gltfModel.traverse(child => {
+            if (child.isMesh && child.material?.name?.includes("latex_")) {
+              const mat = child.material.clone();
+              mat.envMap = resources.txthdr;
+              mat.envMapIntensity = 1.0;
+              mat.needsUpdate = true;
+              child.material = mat;
+            }
+          });
+        }
+        
+        const { position: p, scale: s, rotation: r } = config.glb;
+        gltfModel.position.copy(p);
+        gltfModel.scale.copy(s);
+        gltfModel.rotation.copy(r);
+        scene.add(gltfModel);
+        
+        // Handle animations
+        if (gltf.animations?.length) {
+          gltfMixer = new THREE.AnimationMixer(gltfModel);
+          gltf.animations.forEach(clip => {
+            const action = gltfMixer.clipAction(clip);
+            action.setLoop(THREE.LoopRepeat);
+            action.timeScale = 0.7;
+            gltfAnimationActions.push(action);
+            if (config.glb.autoplay) action.play();
+          });
+        }
+        
+        resources.glb = gltfModel;
+        resolve();
+      },
+      undefined,
+      error => reject(new Error('Failed to load GLB model'))
+    );
+  });
+}
+
+async function loadAudio(path) {
+  return new Promise((resolve) => {
+    AudioController.loadAudio(path);
+    // Audio loading is handled internally by AudioController
+    // We'll resolve immediately and let it load in background
+    resources.audio = true;
+    resolve();
+  });
+}
+
+async function initVegetation(manager) {
+  return new Promise((resolve) => {
+    // Track vegetation loading state
+    let vegetationLoaded = false;
+    let checkInterval;
+    
+    // Initialize vegetation manager
+    VegetationManager.init(scene, manager);
+    
+    // Check if vegetation resources are loaded
+    const checkVegetationLoaded = () => {
+      if (VegetationManager.isLoaded()) {
+        vegetationLoaded = true;
+        resources.vegetation = true;
+        if (checkInterval) clearInterval(checkInterval);
+        resolve();
+      }
+    };
+    
+    // Check immediately and then periodically
+    checkVegetationLoaded();
+    if (!vegetationLoaded) {
+      checkInterval = setInterval(checkVegetationLoaded, 100);
+      
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        if (!vegetationLoaded) {
+          console.warn('Vegetation loading timed out');
+          if (checkInterval) clearInterval(checkInterval);
+          resources.vegetation = true;
+          resolve();
+        }
+      }, 30000);
+    }
+  });
+}
+
+// Progress callback
+function onProgress(itemUrl, itemsLoaded, itemsTotal) {
+  const progress = (itemsLoaded / itemsTotal) * 100;
+  GUI.updateLoadingProgress('overall', progress);
+  console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
+}
+
+// Complete setup after loading
 function completeSetup() {
   if (isSetupComplete) return;
   
+  // Create camera
   camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 2, 0);
   if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
   
-  // Setup composer
+  // Setup composer and passes
+  setupPostProcessing();
+  
+  // Setup lights
+  setupLights();
+  
+  // Create sky plane
+  skyPlane = createSkyPlane({
+    width: 300, height: 300,
+    position: new THREE.Vector3(0, 40, -50),
+    rotation: new THREE.Euler(Math.PI / 2.1, 0, Math.PI / -2),
+    colors: { cloudColor: '#000000', skyTopColor: '#151761', skyBottomColor: '#000000' }
+  });
+  scene.add(skyPlane);
+  
+  // Initialize cursor plane
+  cursorPlane.init(scene, camera);
+  
+  // Create initial vegetation
+  VegetationManager.createInitialVegetationWhenReady(scene);
+  
+  // Hide loading screen and enable controls
+  GUI.hideLoadingScreen();
+  setTimeout(() => {
+    // Double-check vegetation creation after a short delay
+    VegetationManager.createInitialVegetationWhenReady(scene);
+    GUI.enableControls(AudioController.getAudioDuration(), VegetationManager.getTreeCount());
+  }, 100);
+  
+  isSetupComplete = true;
+}
+
+// Setup post-processing
+function setupPostProcessing() {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   
@@ -188,8 +402,10 @@ function completeSetup() {
   chromaticAberrationPass = new ChromaticAberrationPass(config.chromaticAberration.strength);
   chromaticAberrationPass.update(renderer, window.innerWidth, window.innerHeight);
   composer.addPass(bloomPass);
-  
-  // Lights
+}
+
+// Setup lights
+function setupLights() {
   scene.add(new THREE.DirectionalLight(0x111111, 5));
   
   spotlight = new THREE.SpotLight(0xff0000, 5);
@@ -201,20 +417,6 @@ function completeSetup() {
   scene.add(spotlightTarget);
   spotlight.target = spotlightTarget;
   scene.add(spotlight);
-  
-  // Sky plane
-  skyPlane = createSkyPlane({
-    width: 300, height: 300,
-    position: new THREE.Vector3(0, 40, -50),
-    rotation: new THREE.Euler(Math.PI / 2.1, 0, Math.PI / -2),
-    colors: { cloudColor: '#000000', skyTopColor: '#151761', skyBottomColor: '#000000' }
-  });
-  scene.add(skyPlane);
-  
-  // Cursor plane
-  cursorPlane.init(scene, camera);
-  
-  isSetupComplete = true;
 }
 
 // Window resize

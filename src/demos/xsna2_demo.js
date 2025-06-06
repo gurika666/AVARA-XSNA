@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import * as GUI from '../js/gui.js';
-import * as AudioController from '../js/audio-Controller.js';
+import * as AudioController from '../js/audio-controller.js';
 import * as TreeManager from './tree-manager.js';
 import * as GrassModule from './Grass.js';
 import { createSkyPlane, updateCloudUniforms } from '../js/sky-material.js';
