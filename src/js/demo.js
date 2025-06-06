@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import * as GUI from './gui.js';
-import * as AudioController from './audio-Controller.js';
+import * as AudioController from './audio-controller.js';
 import * as TreeManager from './tree-manager.js';
 import * as GrassModule from './Grass.js'; // Import the grass module
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
