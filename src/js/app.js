@@ -7,27 +7,22 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import * as GUI from './gui.js';
 import * as AudioController from './audio-Controller.js';
-import * as TreeManager from './tree-manager.js';
-import * as GrassModule from './Grass.js';
+import * as VegetationManager from './vegetation-manager.js';
 import { createSkyPlane, updateCloudUniforms } from './sky-material.js';
 import { ChromaticAberrationPass } from './chromatic-aberration.js';
 import { DisplacementScenePass } from './DisplacementScenePass.js';
 import * as CursorPlane from './cursor-plane.js';
 
 // Global variables
-let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass;
-let isAnimating = false, animationId = null, lastTime = null;
-let envMap, skyPlane, txthdr, displacementScenePass;
-let gltfMixer, gltfModel, gltfAnimationActions = [];
-let spotlight, spotlightTarget, isSetupComplete = false;
-let raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2();
+let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass;
+let isAnimating = false, animationId = null, lastTime = null, isSetupComplete = false;
+let envMap, skyPlane, txthdr, gltfMixer, gltfModel, gltfAnimationActions = [];
+let spotlight, spotlightTarget, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2();
 let mouseX = 0, mouseY = 0, font, displacementTexture;
-
 
 const textureloader = new THREE.TextureLoader();
 const cameraBaseRotation = new THREE.Euler(0, 0, 0, 'YXZ');
 const maxRotation = 0.15, rotationEasing = 0.05, moveSpeed = 0.5;
-const fogColor = 0x000000, fogNear = 30, fogFar = 100;
 
 const config = {
   text: { size: 2, height: 0.1, depth: 1, z: -50 },
@@ -35,12 +30,9 @@ const config = {
   chromaticAberration: { strength: 0.1, audioResponsive: true },
   flashligh: { color: 0xff0000 },
   displacement: { scale: 0.5, audioResponsive: false, speed: 0.2 },
-  camera:{fov: 40},
+  camera: { fov: 40 },
   glb: {
     path: 'mesh/latex.glb',
-    // position: { x: 0, y: 0, z: -80 },
-    // scale: { x: 10, y: 10, z: 10 },
-    // rotation: { x: 0, y: -1.5, z: 0 },
     position: { x: 0, y: 0, z: -100 },
     scale: { x: 10, y: 10, z: 10 },
     rotation: { x: 0, y: 0, z: 0 },
@@ -62,16 +54,12 @@ let resourcesLoaded = { hdri: false, font: false, displacement: false, glb: fals
 
 // Loading manager
 const manager = new THREE.LoadingManager();
-manager.onProgress = (url, loaded, total) => console.log(`Overall loading: ${Math.round((loaded / total) * 100)}%`);
 manager.onLoad = () => {
-  console.log('All resources loaded successfully');
+  console.log('All resources loaded');
   completeSetup();
-  TreeManager.createInitialTrees(scene);
+  VegetationManager.createInitialVegetationWhenReady(scene);
   setTimeout(enableControls, 100);
 };
-manager.onError = (url) => console.error('Error loading resource:', url);
-
-
 
 function initBasics() {
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -79,112 +67,38 @@ function initBasics() {
   document.body.appendChild(renderer.domElement);
   
   scene = new THREE.Scene();
-
-  // Load txthdr with proper resource tracking
+  
+  // Load txthdr
   const txthdrloader = new RGBELoader(manager);
   txthdrloader.load('images/txt.hdr', 
-    (texture) => {
-      txthdr = texture;
-      txthdr.mapping = THREE.EquirectangularReflectionMapping;
-      resourcesLoaded.txthdr = true;
-      console.log('txthdr texture loaded');
-      checkAllResourcesLoaded();
-    },
-    (progress) => console.log('txthdr loading progress:', progress),
-    (error) => {
-      console.error('Error loading txthdr:', error);
-      resourcesLoaded.txthdr = true; // Mark as complete even on error
-      checkAllResourcesLoaded();
-    }
+    texture => { txthdr = texture; txthdr.mapping = THREE.EquirectangularReflectionMapping; resourcesLoaded.txthdr = true; },
+    undefined,
+    error => { console.error('Error loading txthdr:', error); resourcesLoaded.txthdr = true; }
   );
   
   GUI.setupUI(startAnimation, pauseAnimation);
   AudioController.init({ onTimeUpdate: updateTimeBasedEvents, onScrubComplete: resetTextDisplay });
-  TreeManager.init(scene, manager);
-  GrassModule.init(scene, manager);
+  VegetationManager.init(scene, manager);
   
-  window.addEventListener('resize', () => {
-    if (camera) {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-    }
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+  window.addEventListener('resize', onWindowResize);
 }
 
 function loadGLBModel() {
   const gltfLoader = new GLTFLoader(manager);
-  
-  gltfLoader.load(
-    config.glb.path,
-    (gltf) => {
-      console.log('GLB model loaded successfully');
+  gltfLoader.load(config.glb.path,
+    gltf => {
       gltfModel = gltf.scene;
       
-      // Store references to all latex materials for later processing
-      let latexMeshes = [];
-      
-      // Find all meshes with "latex_" in their material names
-      gltfModel.traverse((child) => {
-        if (child.isMesh && child.material) {
-          // Check if material name includes "latex_"
-          if (child.material.name && child.material.name.includes("latex_")) {
-            latexMeshes.push({
-              mesh: child,
-              originalMaterial: child.material,
-              materialName: child.material.name
-            });
-            console.log('Found latex material:', child.material.name, 'on mesh:', child.name);
-          }
+      // Apply txthdr to latex materials
+      gltfModel.traverse(child => {
+        if (child.isMesh && child.material?.name?.includes("latex_")) {
+          const updatedMaterial = child.material.clone();
+          updatedMaterial.envMap = txthdr;
+          updatedMaterial.envMapIntensity = 1.0;
+          updatedMaterial.needsUpdate = true;
+          child.material = updatedMaterial;
         }
       });
-      
-      // Function to apply txthdr envMap to all latex materials
-      const applyTxthdrToLatexMaterials = () => {
-        if (latexMeshes.length > 0 && txthdr) {
-          latexMeshes.forEach(({ mesh, originalMaterial, materialName }) => {
-            // Create new material based on the original but with txthdr envMap
-            const updatedMaterial = originalMaterial.clone();
-            
-            // Replace the envMap with txthdr
-            updatedMaterial.envMap = txthdr;
-            updatedMaterial.envMapIntensity = 1.0; // Adjust as needed
-            
-            // Ensure the material updates properly
-            updatedMaterial.needsUpdate = true;
-            
-            // Apply the updated material to the mesh
-            mesh.material = updatedMaterial;
-            
-            console.log(`Applied txthdr envMap to material: ${materialName}`);
-          });
-        }
-      };
-      
-      // Apply materials immediately if txthdr is already loaded
-      if (latexMeshes.length > 0) {
-        if (txthdr) {
-          // txthdr is already loaded, apply immediately
-          applyTxthdrToLatexMaterials();
-        } else {
-          // txthdr not loaded yet, wait for it
-          console.log('Waiting for txthdr to load before applying to latex materials');
-          const checkTxthdr = setInterval(() => {
-            if (txthdr) {
-              clearInterval(checkTxthdr);
-              applyTxthdrToLatexMaterials();
-            }
-          }, 100); // Check every 100ms
-        }
-      } else {
-        console.warn('No materials with "latex_" found in the GLB model');
-        // Log all material names for debugging
-        gltfModel.traverse((child) => {
-          if (child.isMesh && child.material) {
-            console.log('Available material:', child.material.name || 'unnamed', 'on mesh:', child.name);
-          }
-        });
-      }
       
       const { position: p, scale: s, rotation: r } = config.glb;
       gltfModel.position.set(p.x, p.y, p.z);
@@ -192,121 +106,73 @@ function loadGLBModel() {
       gltfModel.rotation.set(r.x, r.y, r.z);
       scene.add(gltfModel);
       
-      // Handle animations (unchanged)
+      // Handle animations
       if (gltf.animations?.length) {
-        console.log(`Found ${gltf.animations.length} animations in GLB file`);
         gltfMixer = new THREE.AnimationMixer(gltfModel);
-        
-        gltf.animations.forEach((clip, index) => {
-          console.log(`Animation ${index}: ${clip.name}, Duration: ${clip.duration}s`);
+        gltf.animations.forEach(clip => {
           const action = gltfMixer.clipAction(clip);
           action.setLoop(THREE.LoopRepeat);
           action.timeScale = 0.7;
-          action.clampWhenFinished = false;
           gltfAnimationActions.push(action);
-          
-          if (config.glb.autoplay) {
-            action.play();
-            console.log(`Started animation: ${clip.name}`);
-          }
+          if (config.glb.autoplay) action.play();
         });
       }
       
       resourcesLoaded.glb = true;
-      GUI.updateLoadingProgress('glb', 100);
-      checkAllResourcesLoaded();
     },
-    (progress) => GUI.updateLoadingProgress('glb', (progress.loaded / progress.total) * 100),
-    (error) => {
-      console.error('Error loading GLB model:', error);
-      resourcesLoaded.glb = true;
-      GUI.updateLoadingProgress('glb', 100);
-      checkAllResourcesLoaded();
-    }
+    undefined,
+    error => { console.error('Error loading GLB:', error); resourcesLoaded.glb = true; }
   );
 }
 
 function loadResources() {
   // Load displacement texture
   textureloader.load('images/displacement-map.png', 
-    (texture) => {
-      displacementTexture = texture;
-      displacementTexture.wrapS = displacementTexture.wrapT = THREE.RepeatWrapping;
-      resourcesLoaded.displacement = true;
-      GUI.updateLoadingProgress('displacement', 100);
-      checkAllResourcesLoaded();
-    },
-    (xhr) => GUI.updateLoadingProgress('displacement', xhr.loaded / xhr.total * 100),
-    (error) => {
-      console.error('Error loading displacement texture:', error);
-      resourcesLoaded.displacement = true;
-      GUI.updateLoadingProgress('displacement', 100);
-      checkAllResourcesLoaded();
-    }
+    texture => { displacementTexture = texture; displacementTexture.wrapS = displacementTexture.wrapT = THREE.RepeatWrapping; resourcesLoaded.displacement = true; },
+    undefined,
+    error => { console.error('Error loading displacement:', error); resourcesLoaded.displacement = true; }
   );
 
-  // Load HDRI environment map
+  // Load HDRI
   const hdriLoader = new RGBELoader(manager);
-  hdriLoader.load('images/01.hdr', (texture) => {
-    envMap = texture;
-    envMap.mapping = THREE.EquirectangularReflectionMapping;
-    resourcesLoaded.hdri = true;
-    GUI.updateLoadingProgress('hdri', 100);
-    checkAllResourcesLoaded();
+  hdriLoader.load('images/01.hdr', texture => {
+    envMap = texture; envMap.mapping = THREE.EquirectangularReflectionMapping; resourcesLoaded.hdri = true;
   });
 
   // Load font
   const fontLoader = new FontLoader(manager);
-  fontLoader.load(
-    'fonts/Monarch_Regular.json',
-    (loadedFont) => {
-      font = loadedFont;
-      resourcesLoaded.font = true;
-      GUI.updateLoadingProgress('font', 100);
-      checkAllResourcesLoaded();
-    },
-    (xhr) => GUI.updateLoadingProgress('font', xhr.loaded / xhr.total * 100),
-    (error) => {
-      console.error('Error loading font:', error);
-      resourcesLoaded.font = true;
-      checkAllResourcesLoaded();
-    }
+  fontLoader.load('fonts/Monarch_Regular.json',
+    loadedFont => { font = loadedFont; resourcesLoaded.font = true; },
+    undefined,
+    error => { console.error('Error loading font:', error); resourcesLoaded.font = true; }
   );
 
   loadGLBModel();
   AudioController.loadAudio('audio/xsna.mp3');
 }
 
-function checkAllResourcesLoaded() {
-  const allLoaded = Object.values(resourcesLoaded).every(Boolean) && 
-                    AudioController.isAudioLoaded() && TreeManager.isLoaded();
-  
-  console.log('Resource loading status:', { ...resourcesLoaded, 
-    audio: AudioController.isAudioLoaded(), trees: TreeManager.isLoaded(), allLoaded, setupComplete: isSetupComplete });
-  
-  if (allLoaded && !isSetupComplete) {
-    console.log("All resources loaded, setting up scene");
-    manager.onLoad();
-  }
-}
-
 function completeSetup() {
-  if (isSetupComplete) {
-    console.log('Setup already completed, skipping duplicate call');
-    return;
-  }
-  
-  console.log('Running completeSetup...');
+  if (isSetupComplete) return;
   
   scene.background = new THREE.Color(0x000000);
-  scene.fog = new THREE.Fog(fogColor, fogNear, fogFar);
+  scene.fog = new THREE.Fog(0x000000, 30, 100);
 
   camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 2, 0);
-  camera.rotation.set(cameraBaseRotation.x, cameraBaseRotation.y, cameraBaseRotation.z);
+  camera.rotation.copy(cameraBaseRotation);
 
-  document.addEventListener('mousemove', onMouseMove);
-  document.addEventListener('touchmove', onTouchMove, { passive: false });
+  document.addEventListener('mousemove', e => {
+    mouseX = e.clientX - window.innerWidth / 2;
+    mouseY = e.clientY - window.innerHeight / 2;
+  });
+  
+  document.addEventListener('touchmove', e => {
+    if (e.touches.length > 0) {
+      e.preventDefault();
+      mouseX = e.touches[0].clientX - window.innerWidth / 2;
+      mouseY = e.touches[0].clientY - window.innerHeight / 2;
+    }
+  }, { passive: false });
 
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
@@ -330,27 +196,18 @@ function completeSetup() {
   scene.add(new THREE.DirectionalLight(0x111111, 5));
 
   spotlight = new THREE.SpotLight(config.flashligh.color, 5);
-  Object.assign(spotlight, {
-    angle: Math.PI / 12, penumbra: 0.7, decay: 1, distance: 100, castShadow: false
-  });
+  Object.assign(spotlight, { angle: Math.PI / 12, penumbra: 0.7, decay: 1, distance: 100 });
   spotlight.position.set(0, 2, 0);
-  Object.assign(spotlight.shadow, {
-    mapSize: { width: 1024, height: 1024 },
-    camera: { near: 1, far: 200 }
-  });
 
   spotlightTarget = new THREE.Object3D();
   spotlightTarget.position.set(0, 0, -100);
   scene.add(spotlightTarget);
-  
   spotlight.target = spotlightTarget;
   scene.add(spotlight);
 
   CursorPlane.init(scene, camera);
 
-  if (AudioController.getAudioListener) {
-    camera.add(AudioController.getAudioListener());
-  }
+  if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
 
   skyPlane = createSkyPlane({
     width: 300, height: 300,
@@ -359,25 +216,8 @@ function completeSetup() {
     colors: { cloudColor: '#000000', skyTopColor: '#151761', skyBottomColor: '#000000' }
   });
   scene.add(skyPlane);
-
-  window.removeEventListener('resize', onWindowResize);
-  window.addEventListener('resize', onWindowResize);
   
   isSetupComplete = true;
-  console.log('Setup completed successfully');
-}
-
-function onMouseMove(event) {
-  mouseX = event.clientX - window.innerWidth / 2;
-  mouseY = event.clientY - window.innerHeight / 2;
-}
-
-function onTouchMove(event) {
-  if (event.touches.length > 0) {
-    event.preventDefault();
-    mouseX = event.touches[0].clientX - window.innerWidth / 2;
-    mouseY = event.touches[0].clientY - window.innerHeight / 2;
-  }
 }
 
 function updateTimeBasedEvents(currentTime, deltaTime) {
@@ -393,7 +233,6 @@ function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
   }
-  
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer?.setSize(window.innerWidth, window.innerHeight);
   displacementScenePass?.setSize(window.innerWidth, window.innerHeight);
@@ -401,23 +240,17 @@ function onWindowResize() {
 
 function enableControls() {
   const audioDuration = AudioController.getAudioDuration();
-  const treeCount = TreeManager.getTreeCount();
-  
+  const treeCount = VegetationManager.getTreeCount();
   GUI.enableControls(audioDuration, treeCount);
   GUI.setupScrubber(AudioController.handleScrubberInput, AudioController.handleScrubberChange);
 }
 
-// In your animate function, replace this section:
-
 function animate(time) {
   if (!isAnimating) return;
-  
   animationId = requestAnimationFrame(animate);
   
   let deltaTime = 0;
-  if (lastTime !== null) {
-    deltaTime = Math.min((time - lastTime) / 1000, 0.1);
-  }
+  if (lastTime !== null) deltaTime = Math.min((time - lastTime) / 1000, 0.1);
   lastTime = time;
   
   gltfMixer?.update(deltaTime);
@@ -426,10 +259,9 @@ function animate(time) {
   updateCloudUniforms(skyPlane.material, audioTime, window.innerWidth, window.innerHeight);
   
   const deltaZ = moveSpeed * (deltaTime * 60);
-  const updatedTreeCount = TreeManager.updateTrees(scene, deltaZ);
+  const vegetationCounts = VegetationManager.updateVegetation(scene, deltaZ);
   
-  GrassModule.updateGrass(scene, time);
-  AudioController.update(deltaTime, updatedTreeCount);
+  AudioController.update(deltaTime, vegetationCounts.trees);
 
   if (displacementScenePass) {
     displacementScenePass.update(renderer, time, AudioController.getCurrentTime(), 
@@ -437,30 +269,23 @@ function animate(time) {
   }
 
   const targetRotationY = (mouseX / window.innerWidth) * maxRotation;
-  // CHANGED: Removed the negative sign for Y rotation to uninvert it
   const targetRotationX = (mouseY / window.innerHeight) * maxRotation;
 
   camera.rotation.y += (targetRotationY - camera.rotation.y) * rotationEasing;
   camera.rotation.x += (targetRotationX - camera.rotation.x) * rotationEasing;
-
   camera.rotation.x = Math.max(-maxRotation, Math.min(maxRotation, camera.rotation.x));
   camera.rotation.y = Math.max(-maxRotation, Math.min(maxRotation, camera.rotation.y));
 
-  // CHANGED: Updated mouseNDC calculation to match the camera rotation change
   mouseNDC.x = (mouseX / window.innerWidth) * 2;
-  mouseNDC.y = (mouseY / window.innerHeight) * -2;  // Removed negative sign
-
+  mouseNDC.y = (mouseY / window.innerHeight) * -2;
   raycaster.setFromCamera(mouseNDC, camera);
 
   const targetPoint = new THREE.Vector3();
   raycaster.ray.at(50, targetPoint);
-
   spotlightTarget.position.copy(targetPoint);
   spotlight.position.copy(camera.position);
   
   CursorPlane.update(camera);
-
-  // gltfModel.position.z += 0.1;
 
   if (scene && camera) composer.render();
 }
@@ -468,51 +293,36 @@ function animate(time) {
 function startAnimation() {
   GUI.updatePlaybackState(true);
   AudioController.startAudio();
-  lastTime = null;
-  isAnimating = true;
+  lastTime = null; isAnimating = true;
   animate(performance.now());
 }
 
 function pauseAnimation() {
   if (!isAnimating) return;
-
   AudioController.pauseAudio();
-
-  if (animationId) {
-    cancelAnimationFrame(animationId);
-    animationId = null;
-  }
-
+  if (animationId) { cancelAnimationFrame(animationId); animationId = null; }
   isAnimating = false;
   GUI.updatePlaybackState(false);
 }
 
-// GLB Animation Control Functions
-const controlGLBAnimation = (action, method, index = 0) => {
+// GLB Animation Controls
+const controlGLBAnimation = (method, index = 0) => {
   if (gltfAnimationActions?.[index]) {
     if (method === 'play') gltfAnimationActions[index].play();
     else if (method === 'pause') gltfAnimationActions[index].paused = true;
     else if (method === 'stop') gltfAnimationActions[index].stop();
-    console.log(`${method} GLB animation ${index}`);
   }
 };
 
-const playGLBAnimation = (index = 0) => controlGLBAnimation('play', 'play', index);
-const pauseGLBAnimation = (index = 0) => controlGLBAnimation('pause', 'pause', index);
-const stopGLBAnimation = (index = 0) => controlGLBAnimation('stop', 'stop', index);
+export const playGLBAnimation = (index = 0) => controlGLBAnimation('play', index);
+export const pauseGLBAnimation = (index = 0) => controlGLBAnimation('pause', index);
+export const stopGLBAnimation = (index = 0) => controlGLBAnimation('stop', index);
+export const playAllGLBAnimations = () => gltfAnimationActions.forEach((_, i) => playGLBAnimation(i));
+export const pauseAllGLBAnimations = () => gltfAnimationActions.forEach((_, i) => pauseGLBAnimation(i));
+export const stopAllGLBAnimations = () => gltfAnimationActions.forEach((_, i) => stopGLBAnimation(i));
 
-const playAllGLBAnimations = () => gltfAnimationActions.forEach((action, i) => playGLBAnimation(i));
-const pauseAllGLBAnimations = () => gltfAnimationActions.forEach((action, i) => pauseGLBAnimation(i));
-const stopAllGLBAnimations = () => gltfAnimationActions.forEach((action, i) => stopGLBAnimation(i));
-
-// Main Execution
+// Initialize
 initBasics();
 loadResources();
 
-// Exports
-export {
-  scene, resetTextDisplay, updateTimeBasedEvents,
-  playGLBAnimation, pauseGLBAnimation, stopGLBAnimation,
-  playAllGLBAnimations, pauseAllGLBAnimations, stopAllGLBAnimations,
-  gltfModel, gltfMixer, gltfAnimationActions
-};
+export { scene, resetTextDisplay, updateTimeBasedEvents, gltfModel, gltfMixer, gltfAnimationActions };

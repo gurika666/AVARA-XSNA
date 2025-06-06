@@ -5,14 +5,14 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import * as GUI from './gui.js';
-import * as AudioController from './audio-Controller.js';
+import * as GUI from '../js/gui.js';
+import * as AudioController from '../js/audio-Controller.js';
 import * as TreeManager from './tree-manager.js';
 import * as GrassModule from './Grass.js';
-import { createSkyPlane, updateCloudUniforms } from './sky-material.js';
-import { ChromaticAberrationPass } from './chromatic-aberration.js';
-import { DisplacementScenePass } from './DisplacementScenePass.js';
-import * as CursorPlane from './cursor-plane.js';
+import { createSkyPlane, updateCloudUniforms } from '../js/sky-material.js';
+import { ChromaticAberrationPass } from '../js/chromatic-aberration.js';
+import { DisplacementScenePass } from '../js/DisplacementScenePass.js';
+import * as CursorPlane from '../js/cursor-plane.js';
 
 // Global variables
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass;
