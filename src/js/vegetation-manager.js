@@ -92,7 +92,7 @@ class Grass extends THREE.Mesh {
     const geometry = new GrassGeometry(size, count);
     const alphaTexture = gradientTexture || createGradientTexture();
     const material = new THREE.MeshPhysicalMaterial({
-      map: alphaTexture, roughness: 0.8, metalness: 0.1, clearcoat: 0.2,
+      map: alphaTexture, roughness: 0.8, metalness: 0,
       side: THREE.DoubleSide, transparent: true, alphaMap: alphaTexture, alphaTest: 0.1
     });
     super(geometry, material);

@@ -16,7 +16,7 @@ export function create(onProgress, onComplete, onError) {
     itemsLoaded = loaded;
     itemsTotal = total;
     loadingStartTime = Date.now();
-    console.log(`Loading started: ${loaded}/${total} items`);
+    // console.log(`Loading started: ${loaded}/${total} items`);
   };
   
   manager.onProgress = (url, loaded, total) => {
@@ -34,12 +34,12 @@ export function create(onProgress, onComplete, onError) {
       onProgress(url, loaded, total, overallProgress, resourceType);
     }
     
-    console.log(`Loading progress: ${url} - ${loaded}/${total} (${overallProgress.toFixed(1)}%)`);
+    // console.log(`Loading progress: ${url} - ${loaded}/${total} (${overallProgress.toFixed(1)}%)`);
   };
   
   manager.onLoad = () => {
     const loadingTime = (Date.now() - loadingStartTime) / 1000;
-    console.log(`All resources loaded in ${loadingTime.toFixed(2)} seconds`);
+    // console.log(`All resources loaded in ${loadingTime.toFixed(2)} seconds`);
     
     if (onComplete) {
       onComplete(loadingTime);

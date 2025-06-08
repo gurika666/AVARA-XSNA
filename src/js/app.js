@@ -138,7 +138,7 @@ async function loadAllResources() {
     () => {
       // This is called when ALL resources tracked by the manager are loaded
       allResourcesLoaded = true;
-      console.log('LoadingManager reports all resources loaded');
+      // console.log('LoadingManager reports all resources loaded');
     },
     (url) => {
       console.error('Failed to load:', url);
@@ -335,7 +335,7 @@ async function initVegetation(manager) {
 function onProgress(itemUrl, itemsLoaded, itemsTotal) {
   const progress = (itemsLoaded / itemsTotal) * 100;
   GUI.updateLoadingProgress('overall', progress);
-  console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
+  // console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
 }
 
 // Complete setup after loading
