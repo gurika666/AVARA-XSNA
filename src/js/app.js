@@ -396,7 +396,7 @@ function setupPostProcessing() {
   displacementScenePass.setTextConfig(config.text);
   displacementScenePass.setTextMoveSpeed(0.5);
   displacementScenePass.setTextRemovalZ(5);
-  composer.addPass(displacementScenePass);
+  // composer.addPass(displacementScenePass);
   
   // Chromatic aberration pass
   chromaticAberrationPass = new ChromaticAberrationPass(config.chromaticAberration.strength);
@@ -440,8 +440,8 @@ function animate(time) {
   
   gltfMixer?.update(deltaTime);
   
-  const audioTime = AudioController.getCurrentTime() * 0.03;
-  updateCloudUniforms(skyPlane.material, audioTime, window.innerWidth, window.innerHeight);
+  const audioTime = AudioController.getCurrentTime();
+  updateCloudUniforms(skyPlane.material, audioTime * 0.03, window.innerWidth, window.innerHeight);
   
   const vegetationCounts = VegetationManager.updateVegetation(scene, 0.5 * (deltaTime * 60));
   AudioController.update(deltaTime, vegetationCounts.trees);
@@ -451,12 +451,57 @@ function animate(time) {
       deltaTime, textAppearTimes, config.displacement.scale);
   }
   
-  // Camera rotation
+  // Camera animation based on audio time
+  // const audioTime = AudioController.getCurrentTime();
+  const animStartTime = 1; // Start at 30 seconds
+  const animEndTime = 10;   // End at 60 seconds
+  
+  // Define start and end positions/rotations
+  const startPos = new THREE.Vector3(0, 2, 0);
+  const endPos = new THREE.Vector3(0, 5, -70); // Example target position
+  
+  const startRot = new THREE.Euler(0, 0, 0);
+  const endRot = new THREE.Euler(0.5, 0, 0); // Example target rotation
+  
+  // Calculate base camera position/rotation based on audio time
+  let baseCameraPos = new THREE.Vector3();
+  let baseCameraRot = new THREE.Euler();
+  
+  if (audioTime < animStartTime) {
+    // Before animation starts
+    baseCameraPos.copy(startPos);
+    baseCameraRot.copy(startRot);
+  } else if (audioTime >= animStartTime && audioTime <= animEndTime) {
+    // During animation - calculate interpolated position
+    const progress = (audioTime - animStartTime) / (animEndTime - animStartTime);
+    
+    // Interpolate position
+    baseCameraPos.lerpVectors(startPos, endPos, progress);
+    
+    // Interpolate rotation
+    baseCameraRot.x = THREE.MathUtils.lerp(startRot.x, endRot.x, progress);
+    baseCameraRot.y = THREE.MathUtils.lerp(startRot.y, endRot.y, progress);
+    baseCameraRot.z = THREE.MathUtils.lerp(startRot.z, endRot.z, progress);
+  } else {
+    // After animation ends
+    baseCameraPos.copy(endPos);
+    baseCameraRot.copy(endRot);
+  }
+  
+  // Apply the base position
+  camera.position.copy(baseCameraPos);
+  
+  // Apply mouse control on top of base rotation
   const targetRotY = (mouseX / window.innerWidth) * 0.15;
   const targetRotX = (mouseY / window.innerHeight) * 0.15;
-  camera.rotation.y += (targetRotY - camera.rotation.y) * 0.05;
-  camera.rotation.x += (targetRotX - camera.rotation.x) * 0.05;
-  camera.rotation.x = Math.max(-0.15, Math.min(0.15, camera.rotation.x));
+  
+  // Add mouse rotation to base rotation
+  camera.rotation.x = baseCameraRot.x + targetRotX;
+  camera.rotation.y = baseCameraRot.y + targetRotY;
+  camera.rotation.z = baseCameraRot.z;
+  
+  // Clamp the X rotation to prevent over-rotation
+  camera.rotation.x = Math.max(baseCameraRot.x - 0.15, Math.min(baseCameraRot.x + 0.15, camera.rotation.x));
   
   // Update spotlight
   mouseNDC.set((mouseX / window.innerWidth) * 2, (mouseY / window.innerHeight) * -2);
