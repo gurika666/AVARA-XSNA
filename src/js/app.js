@@ -508,7 +508,7 @@ function animate(time) {
   
   // Camera animation based on audio time
   const startPos = new THREE.Vector3(0, 2, 0);
-  const endPos = new THREE.Vector3(0, 5, -70); // Example target position
+  const endPos = new THREE.Vector3(0, 3, -70); // Example target position
   
   const startRot = new THREE.Euler(0, 0, 0);
   const endRot = new THREE.Euler(0.5, 0, 0); // Example target rotation
