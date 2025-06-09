@@ -1,4 +1,4 @@
-// app.js - Optimized main application with streamlined loading
+// app.js - Optimized main application with streamlined loading and animation blending
 import * as THREE from "three";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -24,9 +24,12 @@ let cursorPlane = new CursorPlane();
 // Character animation specific variables
 let walkAnimation = null;
 let faceUpAnimation = null;
+let hasTransitioned = false; // Track if we've already transitioned
 
- let animStartTime = 10; 
-  let animEndTime = 20;  
+// Animation timing
+const animStartTime = 10; // When to start transitioning to faceUp
+const animEndTime = 20;  // Camera animation end time
+const transitionDuration = 0.8; // Duration of the blend in seconds
 
 const textureloader = new THREE.TextureLoader();
 const config = {
@@ -290,7 +293,8 @@ async function loadGLB(path, manager) {
               faceUpAnimation = action;
               action.setLoop(THREE.LoopOnce);
               action.clampWhenFinished = true; // Keep the final pose
-              // Don't play it yet - will be triggered at 1 second
+              action.setEffectiveWeight(1.0); // Ensure weight is set
+              // Don't play it yet - will be triggered at startTime
               console.log('Prepared faceUp animation');
             }
             // Handle any other animations
@@ -480,27 +484,29 @@ function animate(time) {
       deltaTime, textAppearTimes, config.displacement.scale);
   }
   
-  // Handle faceUp animation trigger
+  // Handle animation transitions
   if (faceUpAnimation && walkAnimation) {
-    if (audioTime >= animStartTime && !faceUpAnimation.isRunning()) {
-      // Stop walk animation and start faceUp animation
-      walkAnimation.stop();
+    if (audioTime >= animStartTime && !hasTransitioned) {
+      // Time to transition to faceUp
+      hasTransitioned = true;
+      // Make sure faceUp is reset and ready
+      faceUpAnimation.reset();
       faceUpAnimation.play();
-      console.log('Replaced Walk_01 with faceUp animation at', audioTime, 'seconds');
-    } else if (audioTime < animStartTime && !walkAnimation.isRunning()) {
-      // If we scrub back before animStartTime, restart walk animation
+      walkAnimation.crossFadeTo(faceUpAnimation, transitionDuration, true);
+      console.log('Starting crossfade to faceUp at', audioTime, 'seconds');
+    } else if (audioTime < animStartTime && hasTransitioned) {
+      // We've scrubbed back before the transition point
+      hasTransitioned = false;
+      // Immediately switch back to walk animation (no transition)
       faceUpAnimation.stop();
       faceUpAnimation.reset();
+      walkAnimation.reset();
       walkAnimation.play();
-      console.log('Resumed Walk_01 animation');
+      console.log('Jumped back to Walk_01 animation');
     }
   }
   
   // Camera animation based on audio time
-  // const audioTime = AudioController.getCurrentTime();
- 
-  
-  // Define start and end positions/rotations
   const startPos = new THREE.Vector3(0, 2, 0);
   const endPos = new THREE.Vector3(0, 5, -70); // Example target position
   
