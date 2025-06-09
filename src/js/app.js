@@ -21,6 +21,13 @@ let spotlight, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2()
 let mouseX = 0, mouseY = 0, font, txthdr;
 let cursorPlane = new CursorPlane();
 
+// Character animation specific variables
+let walkAnimation = null;
+let faceUpAnimation = null;
+
+ let animStartTime = 10; 
+  let animEndTime = 20;  
+
 const textureloader = new THREE.TextureLoader();
 const config = {
   text: { size: 2, height: 0.1, depth: 1, z: -50 },
@@ -31,7 +38,7 @@ const config = {
   glb: {
     path: 'mesh/latex.glb',
     position: new THREE.Vector3(0, 0, -100),
-    scale: new THREE.Vector3(10, 10, 10),
+    scale: new THREE.Vector3(1, 1, 1),
     rotation: new THREE.Euler(0, 0, 0),
     autoplay: true
   }
@@ -263,19 +270,41 @@ async function loadGLB(path, manager) {
         gltfModel.rotation.copy(r);
         scene.add(gltfModel);
         
+        
         // Handle animations
         if (gltf.animations?.length) {
           gltfMixer = new THREE.AnimationMixer(gltfModel);
           gltf.animations.forEach(clip => {
             const action = gltfMixer.clipAction(clip);
-            action.setLoop(THREE.LoopRepeat);
-            action.timeScale = 0.7;
-            gltfAnimationActions.push(action);
-            if (config.glb.autoplay) action.play();
+            
+            // Handle Walk_01 animation
+            if (clip.name === 'Walk_01') {
+              walkAnimation = action;
+              action.setLoop(THREE.LoopRepeat);
+              action.timeScale = 0.7;
+              action.play(); // Start walking animation immediately
+              console.log('Started Walk_01 animation');
+            }
+            // Handle faceUp animation
+            else if (clip.name === 'faceUp') {
+              faceUpAnimation = action;
+              action.setLoop(THREE.LoopOnce);
+              action.clampWhenFinished = true; // Keep the final pose
+              // Don't play it yet - will be triggered at 1 second
+              console.log('Prepared faceUp animation');
+            }
+            // Handle any other animations
+            else {
+              action.setLoop(THREE.LoopRepeat);
+              action.timeScale = 0.7;
+              gltfAnimationActions.push(action);
+              if (config.glb.autoplay) action.play();
+            }
           });
         }
         
         resources.glb = gltfModel;
+        console.log(gltf.animations)
         resolve();
       },
       undefined,
@@ -451,10 +480,25 @@ function animate(time) {
       deltaTime, textAppearTimes, config.displacement.scale);
   }
   
+  // Handle faceUp animation trigger
+  if (faceUpAnimation && walkAnimation) {
+    if (audioTime >= animStartTime && !faceUpAnimation.isRunning()) {
+      // Stop walk animation and start faceUp animation
+      walkAnimation.stop();
+      faceUpAnimation.play();
+      console.log('Replaced Walk_01 with faceUp animation at', audioTime, 'seconds');
+    } else if (audioTime < animStartTime && !walkAnimation.isRunning()) {
+      // If we scrub back before animStartTime, restart walk animation
+      faceUpAnimation.stop();
+      faceUpAnimation.reset();
+      walkAnimation.play();
+      console.log('Resumed Walk_01 animation');
+    }
+  }
+  
   // Camera animation based on audio time
   // const audioTime = AudioController.getCurrentTime();
-  const animStartTime = 1; // Start at 30 seconds
-  const animEndTime = 10;   // End at 60 seconds
+ 
   
   // Define start and end positions/rotations
   const startPos = new THREE.Vector3(0, 2, 0);
