@@ -21,10 +21,17 @@ let spotlight, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2()
 let mouseX = 0, mouseY = 0, font, txthdr;
 let cursorPlane = new CursorPlane();
 
-// Character animation specific variables
 let walkAnimation = null;
 let faceUpAnimation = null;
 let hasTransitioned = false; // Track if we've already transitioned
+let isInTransition = false; // Track if we're currently transitioning
+let transitionStartTime = null; // Track when transition started
+
+// Animation timing
+const animStartTime = 10; // When to start transitioning to faceUp
+const animEndTime = 20;  // Camera animation end time
+const transitionTime = 12; // When to start transitioning to faceUp animation
+const transitionDuration = 2.8; // Duration of the blend in seconds
 
 
 let headBone = null;
@@ -32,15 +39,12 @@ let lookAtTarget = new THREE.Object3D();
 let headQuaternion = new THREE.Quaternion();
 let targetQuaternion = new THREE.Quaternion();
 
-// Animation timing
-const animStartTime = 10; // When to start transitioning to faceUp
-const animEndTime = 20;  // Camera animation end time
-const transitionDuration = 0.8; // Duration of the blend in seconds
+
 
 const textureloader = new THREE.TextureLoader();
 const config = {
   text: { size: 2, height: 0.1, depth: 1, z: -50 },
-  bloom: { strength: 1, radius: 20, threshold: 0.4 },
+  bloom: { strength: 0.7, radius: 5, threshold: 0.5 },
   chromaticAberration: { strength: 0.1 },
   displacement: { scale: 0.5, speed: 0.2 },
   camera: { fov: 40 },
@@ -279,7 +283,7 @@ async function loadGLB(path, manager) {
         gltfModel.rotation.copy(r);
         scene.add(gltfModel);
         
-           setupHeadTracking();
+        setupHeadTracking();
         
         // Handle animations
         if (gltf.animations?.length) {
@@ -293,14 +297,16 @@ async function loadGLB(path, manager) {
               action.setLoop(THREE.LoopRepeat);
               action.timeScale = 0.7;
               action.play(); // Start walking animation immediately
+              action.setEffectiveWeight(1.0);
               console.log('Started Walk_01 animation');
             }
             // Handle faceUp animation
             else if (clip.name === 'faceUp') {
               faceUpAnimation = action;
               action.setLoop(THREE.LoopOnce);
+              action.timeScale = 0.7;
               action.clampWhenFinished = true; // Keep the final pose
-              action.setEffectiveWeight(1.0); // Ensure weight is set
+              action.setEffectiveWeight(0.0); // Start with 0 weight
               // Don't play it yet - will be triggered at startTime
               console.log('Prepared faceUp animation');
             }
@@ -323,6 +329,7 @@ async function loadGLB(path, manager) {
     );
   });
 }
+
 
 async function loadAudio(path) {
   return new Promise((resolve) => {
@@ -548,7 +555,6 @@ function onWindowResize() {
   displacementScenePass?.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Animation loop
 function animate(time) {
   if (!isAnimating) return;
   animationId = requestAnimationFrame(animate);
@@ -568,85 +574,156 @@ function animate(time) {
     displacementScenePass.update(renderer, time, AudioController.getCurrentTime(), 
       deltaTime, textAppearTimes, config.displacement.scale);
   }
-  
+
   // Handle animation transitions
   if (faceUpAnimation && walkAnimation) {
-    if (audioTime >= animStartTime && !hasTransitioned) {
-      // Time to transition to faceUp
+    // Check if we should be in faceUp state (after transition time)
+    const shouldBeInFaceUp = audioTime >= transitionTime;
+    const shouldBeTransitioning = audioTime >= transitionTime && audioTime < (transitionTime + transitionDuration);
+    
+    if (shouldBeTransitioning && !hasTransitioned && !isInTransition) {
+      // Start transition
       hasTransitioned = true;
-      // Make sure faceUp is reset and ready
+      isInTransition = true;
+      transitionStartTime = audioTime;
+      
+      // Reset and play faceUp animation
       faceUpAnimation.reset();
       faceUpAnimation.play();
-      walkAnimation.crossFadeTo(faceUpAnimation, transitionDuration, true);
-      console.log('Starting crossfade to faceUp at', audioTime, 'seconds');
-    } else if (audioTime < animStartTime && hasTransitioned) {
+      faceUpAnimation.setEffectiveWeight(0.0);
+      walkAnimation.setEffectiveWeight(1.0);
+      
+      console.log('Starting transition to faceUp at', audioTime, 'seconds');
+    } else if (isInTransition && shouldBeTransitioning) {
+      // Continue transition - calculate progress
+      const transitionProgress = Math.min((audioTime - transitionStartTime) / transitionDuration, 1.0);
+      
+      // Smooth easing function
+      const easedProgress = 0.5 - 0.5 * Math.cos(transitionProgress * Math.PI);
+      
+      walkAnimation.setEffectiveWeight(1.0 - easedProgress);
+      faceUpAnimation.setEffectiveWeight(easedProgress);
+      
+      if (transitionProgress >= 1.0) {
+        isInTransition = false;
+        console.log('Transition to faceUp completed');
+      }
+    } else if (isInTransition && shouldBeInFaceUp && !shouldBeTransitioning) {
+      // Continue quick transition after jump - use half duration
+      const quickTransitionDuration = transitionDuration / 2;
+      const transitionProgress = Math.min((audioTime - transitionStartTime) / quickTransitionDuration, 1.0);
+      
+      // Smooth easing function
+      const easedProgress = 0.5 - 0.5 * Math.cos(transitionProgress * Math.PI);
+      
+      walkAnimation.setEffectiveWeight(1.0 - easedProgress);
+      faceUpAnimation.setEffectiveWeight(easedProgress);
+      
+      if (transitionProgress >= 1.0) {
+        isInTransition = false;
+        console.log('Quick transition to faceUp completed');
+      }
+    } else if (shouldBeInFaceUp && !shouldBeTransitioning && !hasTransitioned) {
+      // We jumped past the transition time - check if we need to transition
+      const walkWeight = walkAnimation.getEffectiveWeight();
+      const faceUpWeight = faceUpAnimation.getEffectiveWeight();
+      
+      // Only start transition if walk animation is active (weight > 0)
+      if (walkWeight > 0 && faceUpWeight < 1) {
+        // Start a quick transition from walk to faceUp
+        hasTransitioned = true;
+        isInTransition = true;
+        transitionStartTime = audioTime;
+        
+        // Reset and play faceUp animation
+        faceUpAnimation.reset();
+        faceUpAnimation.play();
+        faceUpAnimation.setEffectiveWeight(0.0);
+        walkAnimation.setEffectiveWeight(1.0);
+        
+        console.log('Starting quick transition to faceUp after jump at', audioTime, 'seconds');
+      } else if (faceUpWeight === 1) {
+        // Already in faceUp, just update state
+        hasTransitioned = true;
+        isInTransition = false;
+        console.log('Already in faceUp animation, no transition needed');
+      }
+    } else if (shouldBeInFaceUp && !shouldBeTransitioning && hasTransitioned) {
+      // We're past the transition, ensure faceUp is fully active
+      if (isInTransition) {
+        isInTransition = false;
+      }
+      walkAnimation.setEffectiveWeight(0.0);
+      faceUpAnimation.setEffectiveWeight(1.0);
+    } else if (!shouldBeInFaceUp && (hasTransitioned || isInTransition)) {
       // We've scrubbed back before the transition point
       hasTransitioned = false;
-      // Immediately switch back to walk animation (no transition)
+      isInTransition = false;
+      transitionStartTime = null;
+      
+      // Stop faceUp and ensure walk is playing
       faceUpAnimation.stop();
       faceUpAnimation.reset();
-      walkAnimation.reset();
-      walkAnimation.play();
+      faceUpAnimation.setEffectiveWeight(0.0);
+      
+      // Reset walk animation to ensure proper speed
+      if (!walkAnimation.isRunning()) {
+        walkAnimation.reset();
+        walkAnimation.play();
+      }
+      walkAnimation.setEffectiveWeight(1.0);
+      walkAnimation.timeScale = 0.7; // Ensure correct time scale
+      
       console.log('Jumped back to Walk_01 animation');
+    } else if (!shouldBeInFaceUp && !hasTransitioned) {
+      // We're before the transition and haven't transitioned yet
+      // Ensure walk animation is at correct speed
+      if (walkAnimation.isRunning() && walkAnimation.timeScale !== 0.7) {
+        walkAnimation.timeScale = 0.7;
+      }
     }
   }
 
   updateHeadLookAt(camera, deltaTime);
   
-  // Camera animation based on audio time
+  // Camera animation based on audio time (rest of the code remains the same)
   const startPos = new THREE.Vector3(0, 2, 0);
-  const endPos = new THREE.Vector3(0, 3, -70); // Example target position
+  const endPos = new THREE.Vector3(0, 3, -70);
   
   const startRot = new THREE.Euler(0, 0, 0);
-  const endRot = new THREE.Euler(0.5, 0, 0); // Example target rotation
+  const endRot = new THREE.Euler(0.5, 0, 0);
   
   // Calculate base camera position/rotation based on audio time
   let baseCameraPos = new THREE.Vector3();
   let baseCameraRot = new THREE.Euler();
   
   if (audioTime < animStartTime) {
-    // Before animation starts
     baseCameraPos.copy(startPos);
     baseCameraRot.copy(startRot);
   } else if (audioTime >= animStartTime && audioTime <= animEndTime) {
-    // During animation - calculate interpolated position
     const progress = (audioTime - animStartTime) / (animEndTime - animStartTime);
-    
-    // Interpolate position
     baseCameraPos.lerpVectors(startPos, endPos, progress);
-    
-    // Interpolate rotation
     baseCameraRot.x = THREE.MathUtils.lerp(startRot.x, endRot.x, progress);
     baseCameraRot.y = THREE.MathUtils.lerp(startRot.y, endRot.y, progress);
     baseCameraRot.z = THREE.MathUtils.lerp(startRot.z, endRot.z, progress);
   } else {
-    // After animation ends
     baseCameraPos.copy(endPos);
     baseCameraRot.copy(endRot);
   }
   
-  // Apply the base position
   camera.position.copy(baseCameraPos);
   
-  // Apply mouse control on top of base rotation
   const targetRotY = (mouseX / window.innerWidth) * 0.15;
   const targetRotX = (mouseY / window.innerHeight) * 0.15;
   
-  // Add mouse rotation to base rotation
   camera.rotation.x = baseCameraRot.x + targetRotX;
   camera.rotation.y = baseCameraRot.y + targetRotY;
   camera.rotation.z = baseCameraRot.z;
   
-  // Clamp the X rotation to prevent over-rotation
   camera.rotation.x = Math.max(baseCameraRot.x - 0.15, Math.min(baseCameraRot.x + 0.15, camera.rotation.x));
   
-  // Update spotlight
-
   mouseNDC.set((mouseX / window.innerWidth) * 2, (mouseY / window.innerHeight) * -2);
- 
-  // mouseNDC.x = (mouseX / (window.innerWidth * 0.5)); // Gives -1 to 1
-  // mouseNDC.y = -(mouseY / (window.innerHeight * 0.5)); // Gives -1 to 1
-
+  
   raycaster.setFromCamera(mouseNDC, camera);
   const targetPoint = new THREE.Vector3();
   raycaster.ray.at(50, targetPoint);
