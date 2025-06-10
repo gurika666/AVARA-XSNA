@@ -26,6 +26,12 @@ let walkAnimation = null;
 let faceUpAnimation = null;
 let hasTransitioned = false; // Track if we've already transitioned
 
+
+let headBone = null;
+let lookAtTarget = new THREE.Object3D();
+let headQuaternion = new THREE.Quaternion();
+let targetQuaternion = new THREE.Quaternion();
+
 // Animation timing
 const animStartTime = 10; // When to start transitioning to faceUp
 const animEndTime = 20;  // Camera animation end time
@@ -273,6 +279,7 @@ async function loadGLB(path, manager) {
         gltfModel.rotation.copy(r);
         scene.add(gltfModel);
         
+           setupHeadTracking();
         
         // Handle animations
         if (gltf.animations?.length) {
@@ -412,6 +419,84 @@ function completeSetup() {
   isSetupComplete = true;
 }
 
+function setupHeadTracking() {
+  if (!gltfModel) return;
+  
+  // Find the head bone
+  gltfModel.traverse((child) => {
+    if (child.isBone && child.name === 'headbone') {
+      headBone = child;
+      console.log('Found head bone:', headBone);
+      
+      // Store the initial rotation
+      headBone.userData.initialRotation = headBone.rotation.clone();
+      headBone.userData.initialQuaternion = headBone.quaternion.clone();
+    }
+  });
+  
+  if (!headBone) {
+    console.warn('Head bone not found');
+  }
+}
+
+function updateHeadLookAt(camera, deltaTime) {
+  if (!headBone || !isAnimating) return;
+  
+  // Get normalized mouse position (-1 to 1)
+  const normalizedMouseX = -(mouseX / (window.innerWidth * 0.5));
+  const normalizedMouseY = -(mouseY / (window.innerHeight * 0.5));
+  
+  // Define rotation limits
+  const maxRotationX = Math.PI / 4; // 45 degrees up/down
+  const maxRotationY = Math.PI / 6; // 30 degrees left/right (as in your working version)
+  const maxRotationZ = Math.PI / 12; // 15 degrees tilt
+  
+  // Calculate target rotations with limits already applied
+  const targetRotationY = THREE.MathUtils.clamp(
+    -normalizedMouseX * maxRotationY,
+    -maxRotationY,
+    maxRotationY
+  );
+  const targetRotationX = THREE.MathUtils.clamp(
+    -normalizedMouseY * maxRotationX,
+    -maxRotationX,
+    maxRotationX
+  );
+  
+  // Create target quaternion from these angles
+  const euler = new THREE.Euler(targetRotationX, targetRotationY, 0, 'YXZ');
+  const lookAtQuaternion = new THREE.Quaternion();
+  lookAtQuaternion.setFromEuler(euler);
+  
+  // Get the current animation quaternion
+  const animationQuaternion = headBone.quaternion.clone();
+  
+  // Blend between animation and look-at rotation
+  const animationInfluence = 0.5; // How much the animation affects the head (0 = full look-at, 1 = full animation)
+  const lookAtInfluence = 1 - animationInfluence;
+  
+  // Interpolate between animation and look-at
+  targetQuaternion.copy(animationQuaternion);
+  targetQuaternion.slerp(lookAtQuaternion, lookAtInfluence);
+  
+  // Apply additional constraints if needed
+  // Convert to euler to check/apply any additional limits
+  const finalEuler = new THREE.Euler();
+  finalEuler.setFromQuaternion(targetQuaternion, 'YXZ');
+  
+  // Ensure we're still within bounds after blending
+  finalEuler.x = THREE.MathUtils.clamp(finalEuler.x, -maxRotationX, maxRotationX);
+  finalEuler.y = THREE.MathUtils.clamp(finalEuler.y, -maxRotationY, maxRotationY);
+  finalEuler.z = THREE.MathUtils.clamp(finalEuler.z, -maxRotationZ, maxRotationZ);
+  
+  // Convert back to quaternion
+  targetQuaternion.setFromEuler(finalEuler);
+  
+  // Smooth interpolation to target
+  const smoothingFactor = 0.1; // Adjust for smoother/snappier movement
+  headBone.quaternion.slerp(targetQuaternion, smoothingFactor);
+}
+
 // Setup post-processing
 function setupPostProcessing() {
   composer = new EffectComposer(renderer);
@@ -505,6 +590,8 @@ function animate(time) {
       console.log('Jumped back to Walk_01 animation');
     }
   }
+
+  updateHeadLookAt(camera, deltaTime);
   
   // Camera animation based on audio time
   const startPos = new THREE.Vector3(0, 2, 0);
@@ -554,7 +641,12 @@ function animate(time) {
   camera.rotation.x = Math.max(baseCameraRot.x - 0.15, Math.min(baseCameraRot.x + 0.15, camera.rotation.x));
   
   // Update spotlight
+
   mouseNDC.set((mouseX / window.innerWidth) * 2, (mouseY / window.innerHeight) * -2);
+ 
+  // mouseNDC.x = (mouseX / (window.innerWidth * 0.5)); // Gives -1 to 1
+  // mouseNDC.y = -(mouseY / (window.innerHeight * 0.5)); // Gives -1 to 1
+
   raycaster.setFromCamera(mouseNDC, camera);
   const targetPoint = new THREE.Vector3();
   raycaster.ray.at(50, targetPoint);
