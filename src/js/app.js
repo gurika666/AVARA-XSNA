@@ -39,6 +39,13 @@ let lookAtTarget = new THREE.Object3D();
 let headQuaternion = new THREE.Quaternion();
 let targetQuaternion = new THREE.Quaternion();
 
+// Mouse tracking for inactivity
+let lastMouseX = 0;
+let lastMouseY = 0;
+let mouseInactiveFrames = 0;
+const MOUSE_INACTIVE_THRESHOLD = 60; // frames before returning to original position
+const MOUSE_MOVEMENT_THRESHOLD = 2; // pixels to consider as movement
+
 
 
 const textureloader = new THREE.TextureLoader();
@@ -449,6 +456,23 @@ function setupHeadTracking() {
 function updateHeadLookAt(camera, deltaTime) {
   if (!headBone || !isAnimating) return;
   
+  // Check for mouse movement
+  const mouseMoved = Math.abs(mouseX - lastMouseX) > MOUSE_MOVEMENT_THRESHOLD || 
+                     Math.abs(mouseY - lastMouseY) > MOUSE_MOVEMENT_THRESHOLD;
+  
+  if (mouseMoved) {
+    mouseInactiveFrames = 0;
+    lastMouseX = mouseX;
+    lastMouseY = mouseY;
+  } else {
+    mouseInactiveFrames++;
+  }
+  
+  // Calculate whether we should use mouse look or return to original
+  const isMouseActive = mouseInactiveFrames < MOUSE_INACTIVE_THRESHOLD;
+  const returnToOriginalProgress = isMouseActive ? 0 : 
+    Math.min((mouseInactiveFrames - MOUSE_INACTIVE_THRESHOLD) / 60, 1); // 1 second transition
+  
   // Get normalized mouse position (-1 to 1)
   const normalizedMouseX = -(mouseX / (window.innerWidth * 0.5));
   const normalizedMouseY = -(mouseY / (window.innerHeight * 0.5));
@@ -462,17 +486,38 @@ function updateHeadLookAt(camera, deltaTime) {
   const baseRotationOffset = new THREE.Quaternion();
   baseRotationOffset.setFromEuler(new THREE.Euler(-Math.PI / 5, 0, 0)); // Rotate 90 degrees around X
   
-  // Calculate target rotations
-  const targetRotationY = THREE.MathUtils.clamp(
-    -normalizedMouseX * maxRotationY,
-    -maxRotationY,
-    maxRotationY
-  );
-  const targetRotationX = THREE.MathUtils.clamp(
-    -normalizedMouseY * maxRotationX,
-    -maxRotationX,
-    maxRotationX
-  );
+  // Calculate target rotations based on mouse activity
+  let targetRotationY, targetRotationX;
+  
+  if (isMouseActive && returnToOriginalProgress === 0) {
+    // Use mouse-based rotation
+    targetRotationY = THREE.MathUtils.clamp(
+      -normalizedMouseX * maxRotationY,
+      -maxRotationY,
+      maxRotationY
+    );
+    targetRotationX = THREE.MathUtils.clamp(
+      -normalizedMouseY * maxRotationX,
+      -maxRotationX,
+      maxRotationX
+    );
+  } else {
+    // Blend between mouse rotation and original (0,0)
+    const mouseRotationY = THREE.MathUtils.clamp(
+      -normalizedMouseX * maxRotationY,
+      -maxRotationY,
+      maxRotationY
+    );
+    const mouseRotationX = THREE.MathUtils.clamp(
+      -normalizedMouseY * maxRotationX,
+      -maxRotationX,
+      maxRotationX
+    );
+    
+    // Lerp to original rotation
+    targetRotationY = THREE.MathUtils.lerp(mouseRotationY, 0, returnToOriginalProgress);
+    targetRotationX = THREE.MathUtils.lerp(mouseRotationX, 0, returnToOriginalProgress);
+  }
   
   // Create the look rotation
   const lookEuler = new THREE.Euler(targetRotationX, targetRotationY, 0, 'YXZ');
@@ -497,8 +542,8 @@ function updateHeadLookAt(camera, deltaTime) {
   blendedQuaternion.copy(animationQuaternion);
   blendedQuaternion.slerp(targetQuaternion, lookAtInfluence);
   
-  // Smooth interpolation to target
-  const smoothingFactor = 0.1;
+  // Smooth interpolation to target - adjust speed based on whether returning to original
+  const smoothingFactor = isMouseActive ? 0.1 : 0.05; // Slower when returning to original
   headBone.quaternion.slerp(blendedQuaternion, smoothingFactor);
 }
 
