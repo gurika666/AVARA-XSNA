@@ -455,10 +455,14 @@ function updateHeadLookAt(camera, deltaTime) {
   
   // Define rotation limits
   const maxRotationX = Math.PI / 4; // 45 degrees up/down
-  const maxRotationY = Math.PI / 6; // 30 degrees left/right (as in your working version)
+  const maxRotationY = Math.PI / 6; // 30 degrees left/right
   const maxRotationZ = Math.PI / 12; // 15 degrees tilt
   
-  // Calculate target rotations with limits already applied
+
+  const baseRotationOffset = new THREE.Quaternion();
+  baseRotationOffset.setFromEuler(new THREE.Euler(-Math.PI / 5, 0, 0)); // Rotate 90 degrees around X
+  
+  // Calculate target rotations
   const targetRotationY = THREE.MathUtils.clamp(
     -normalizedMouseX * maxRotationY,
     -maxRotationY,
@@ -470,39 +474,35 @@ function updateHeadLookAt(camera, deltaTime) {
     maxRotationX
   );
   
-  // Create target quaternion from these angles
-  const euler = new THREE.Euler(targetRotationX, targetRotationY, 0, 'YXZ');
-  const lookAtQuaternion = new THREE.Quaternion();
-  lookAtQuaternion.setFromEuler(euler);
+  // Create the look rotation
+  const lookEuler = new THREE.Euler(targetRotationX, targetRotationY, 0, 'YXZ');
+  const lookQuaternion = new THREE.Quaternion();
+  lookQuaternion.setFromEuler(lookEuler);
+  
+  // Combine base offset with look rotation
+  const targetQuaternion = new THREE.Quaternion();
+  targetQuaternion.multiplyQuaternions(baseRotationOffset, lookQuaternion);
+  
+
   
   // Get the current animation quaternion
   const animationQuaternion = headBone.quaternion.clone();
   
   // Blend between animation and look-at rotation
-  const animationInfluence = 0.5; // How much the animation affects the head (0 = full look-at, 1 = full animation)
+  const animationInfluence = 0.5;
   const lookAtInfluence = 1 - animationInfluence;
   
   // Interpolate between animation and look-at
-  targetQuaternion.copy(animationQuaternion);
-  targetQuaternion.slerp(lookAtQuaternion, lookAtInfluence);
-  
-  // Apply additional constraints if needed
-  // Convert to euler to check/apply any additional limits
-  const finalEuler = new THREE.Euler();
-  finalEuler.setFromQuaternion(targetQuaternion, 'YXZ');
-  
-  // Ensure we're still within bounds after blending
-  finalEuler.x = THREE.MathUtils.clamp(finalEuler.x, -maxRotationX, maxRotationX);
-  finalEuler.y = THREE.MathUtils.clamp(finalEuler.y, -maxRotationY, maxRotationY);
-  finalEuler.z = THREE.MathUtils.clamp(finalEuler.z, -maxRotationZ, maxRotationZ);
-  
-  // Convert back to quaternion
-  targetQuaternion.setFromEuler(finalEuler);
+  const blendedQuaternion = new THREE.Quaternion();
+  blendedQuaternion.copy(animationQuaternion);
+  blendedQuaternion.slerp(targetQuaternion, lookAtInfluence);
   
   // Smooth interpolation to target
-  const smoothingFactor = 0.1; // Adjust for smoother/snappier movement
-  headBone.quaternion.slerp(targetQuaternion, smoothingFactor);
+  const smoothingFactor = 0.1;
+  headBone.quaternion.slerp(blendedQuaternion, smoothingFactor);
 }
+
+
 
 // Setup post-processing
 function setupPostProcessing() {
@@ -688,7 +688,7 @@ function animate(time) {
   
   // Camera animation based on audio time (rest of the code remains the same)
   const startPos = new THREE.Vector3(0, 2, 0);
-  const endPos = new THREE.Vector3(0, 3, -70);
+  const endPos = new THREE.Vector3(0, 4, -70);
   
   const startRot = new THREE.Euler(0, 0, 0);
   const endRot = new THREE.Euler(0.5, 0, 0);
