@@ -8,6 +8,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { DisplacementScenePass } from './DisplacementScenePass.js';
 import { ChromaticAberrationPass, CursorPlane, createSkyPlane, updateCloudUniforms } from './shader-manager.js';
+import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import * as GUI from './gui.js';
 import * as AudioController from './audio-controller.js';
 import * as VegetationManager from './vegetation-manager.js';
@@ -62,6 +63,15 @@ const config = {
     rotation: new THREE.Euler(0, 0, 0),
     autoplay: true
   }
+};
+
+let bokehPass;
+let dofEnabled = false;
+let dofParams = {
+  focus: 2.0,      // Distance to focus point
+  aperture: 0.025,   // Aperture size (smaller = less blur)
+  maxblur: 0.01,     // Maximum blur amount
+  enabled: true
 };
 
 const textAppearTimes = [
@@ -305,7 +315,7 @@ async function loadGLB(path, manager) {
               action.timeScale = 0.7;
               action.play(); // Start walking animation immediately
               action.setEffectiveWeight(1.0);
-              console.log('Started Walk_01 animation');
+              // console.log('Started Walk_01 animation');
             }
             // Handle faceUp animation
             else if (clip.name === 'faceUp') {
@@ -315,7 +325,7 @@ async function loadGLB(path, manager) {
               action.clampWhenFinished = true; // Keep the final pose
               action.setEffectiveWeight(0.0); // Start with 0 weight
               // Don't play it yet - will be triggered at startTime
-              console.log('Prepared faceUp animation');
+              // console.log('Prepared faceUp animation');
             }
             // Handle any other animations
             else {
@@ -328,7 +338,7 @@ async function loadGLB(path, manager) {
         }
         
         resources.glb = gltfModel;
-        console.log(gltf.animations)
+        // console.log(gltf.animations)
         resolve();
       },
       undefined,
@@ -440,7 +450,7 @@ function setupHeadTracking() {
   gltfModel.traverse((child) => {
     if (child.isBone && child.name === 'headbone') {
       headBone = child;
-      console.log('Found head bone:', headBone);
+      // console.log('Found head bone:', headBone);
       
       // Store the initial rotation
       headBone.userData.initialRotation = headBone.rotation.clone();
@@ -547,9 +557,6 @@ function updateHeadLookAt(camera, deltaTime) {
   headBone.quaternion.slerp(blendedQuaternion, smoothingFactor);
 }
 
-
-
-// Setup post-processing
 function setupPostProcessing() {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
@@ -560,19 +567,38 @@ function setupPostProcessing() {
     config.bloom.strength, config.bloom.radius, config.bloom.threshold
   );
   
+  // Bokeh/DOF pass - add before bloom for better results
+  bokehPass = new BokehPass(scene, camera, {
+    focus: dofParams.focus,
+    aperture: dofParams.aperture,
+    maxblur: dofParams.maxblur,
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
+  
+  // Important: BokehPass sets needsSwap to false, so we need to handle this
+  bokehPass.needsSwap = true; // Enable buffer swapping for subsequent passes
+  
   // Displacement pass
   displacementScenePass = new DisplacementScenePass(renderer, config.displacement.scale);
   displacementScenePass.initTextSupport(font);
   displacementScenePass.setTextConfig(config.text);
   displacementScenePass.setTextMoveSpeed(0.5);
   displacementScenePass.setTextRemovalZ(5);
-  // composer.addPass(displacementScenePass);
   
   // Chromatic aberration pass
   chromaticAberrationPass = new ChromaticAberrationPass(config.chromaticAberration.strength);
   chromaticAberrationPass.update(renderer, window.innerWidth, window.innerHeight);
+  
+  // Add passes in order
+  if (dofParams.enabled) {
+    composer.addPass(bokehPass);
+  }
   composer.addPass(bloomPass);
+  // composer.addPass(displacementScenePass); // Uncomment if needed
 }
+
+
 
 // Setup lights
 function setupLights() {
@@ -589,7 +615,6 @@ function setupLights() {
   scene.add(spotlight);
 }
 
-// Window resize
 function onWindowResize() {
   if (camera) {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -598,6 +623,11 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer?.setSize(window.innerWidth, window.innerHeight);
   displacementScenePass?.setSize(window.innerWidth, window.innerHeight);
+  
+  // Update bokeh pass size
+  if (bokehPass) {
+    bokehPass.uniforms['aspect'].value = camera.aspect;
+  }
 }
 
 function animate(time) {
@@ -638,7 +668,7 @@ function animate(time) {
       faceUpAnimation.setEffectiveWeight(0.0);
       walkAnimation.setEffectiveWeight(1.0);
       
-      console.log('Starting transition to faceUp at', audioTime, 'seconds');
+      // console.log('Starting transition to faceUp at', audioTime, 'seconds');
     } else if (isInTransition && shouldBeTransitioning) {
       // Continue transition - calculate progress
       const transitionProgress = Math.min((audioTime - transitionStartTime) / transitionDuration, 1.0);
@@ -651,7 +681,7 @@ function animate(time) {
       
       if (transitionProgress >= 1.0) {
         isInTransition = false;
-        console.log('Transition to faceUp completed');
+        // console.log('Transition to faceUp completed');
       }
     } else if (isInTransition && shouldBeInFaceUp && !shouldBeTransitioning) {
       // Continue quick transition after jump - use half duration
