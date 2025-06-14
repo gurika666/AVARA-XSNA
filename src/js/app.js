@@ -8,11 +8,15 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { DisplacementScenePass } from './DisplacementScenePass.js';
 import { ChromaticAberrationPass, CursorPlane, createSkyPlane, updateCloudUniforms } from './shader-manager.js';
-import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import * as GUI from './gui.js';
 import * as AudioController from './audio-controller.js';
 import * as VegetationManager from './vegetation-manager.js';
 import * as LoadingManager from './loading-manager.js';
+import { BasicBlurPass } from './basic-blur-pass.js';
+import { SimpleDepthPass } from './depth-visualization-pass.js';
+
+
+let selectiveBlur;
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass;
@@ -63,15 +67,6 @@ const config = {
     rotation: new THREE.Euler(0, 0, 0),
     autoplay: true
   }
-};
-
-let bokehPass;
-let dofEnabled = false;
-let dofParams = {
-  focus: 2.0,      // Distance to focus point
-  aperture: 0.025,   // Aperture size (smaller = less blur)
-  maxblur: 0.01,     // Maximum blur amount
-  enabled: true
 };
 
 const textAppearTimes = [
@@ -407,7 +402,7 @@ function completeSetup() {
   if (isSetupComplete) return;
   
   // Create camera
-  camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 2000);
+  camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 2, 0);
   if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
   
@@ -427,7 +422,7 @@ function completeSetup() {
   scene.add(skyPlane);
   
   // Initialize cursor plane
-  cursorPlane.init(scene, camera);
+  // cursorPlane.init(scene, camera);
   
   // Create initial vegetation
   VegetationManager.createInitialVegetationWhenReady(scene);
@@ -561,23 +556,15 @@ function setupPostProcessing() {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   
+
+ const blurPass = new BasicBlurPass(3.0); // Start with blur size 3
+  composer.addPass(blurPass);
+  
   // Bloom pass
   bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
     config.bloom.strength, config.bloom.radius, config.bloom.threshold
   );
-  
-  // Bokeh/DOF pass - add before bloom for better results
-  bokehPass = new BokehPass(scene, camera, {
-    focus: dofParams.focus,
-    aperture: dofParams.aperture,
-    maxblur: dofParams.maxblur,
-    width: window.innerWidth,
-    height: window.innerHeight
-  });
-  
-  // Important: BokehPass sets needsSwap to false, so we need to handle this
-  bokehPass.needsSwap = true; // Enable buffer swapping for subsequent passes
   
   // Displacement pass
   displacementScenePass = new DisplacementScenePass(renderer, config.displacement.scale);
@@ -591,11 +578,13 @@ function setupPostProcessing() {
   chromaticAberrationPass.update(renderer, window.innerWidth, window.innerHeight);
   
   // Add passes in order
-  if (dofParams.enabled) {
-    composer.addPass(bokehPass);
-  }
   composer.addPass(bloomPass);
   // composer.addPass(displacementScenePass); // Uncomment if needed
+
+
+  const depthPass = new SimpleDepthPass(scene, camera);
+  composer.addPass(depthPass);
+
 }
 
 
@@ -623,11 +612,6 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer?.setSize(window.innerWidth, window.innerHeight);
   displacementScenePass?.setSize(window.innerWidth, window.innerHeight);
-  
-  // Update bokeh pass size
-  if (bokehPass) {
-    bokehPass.uniforms['aspect'].value = camera.aspect;
-  }
 }
 
 function animate(time) {
