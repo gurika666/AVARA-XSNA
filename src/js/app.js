@@ -16,7 +16,7 @@ import { BasicBlurPass } from './basic-blur-pass.js';
 import { SimpleDepthPass } from './depth-visualization-pass.js';
 
 
-let selectiveBlur;
+
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass;
@@ -25,6 +25,12 @@ let skyPlane, gltfMixer, gltfModel, gltfAnimationActions = [];
 let spotlight, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2();
 let mouseX = 0, mouseY = 0, font, txthdr;
 let cursorPlane = new CursorPlane();
+
+
+const LAYERS = {
+  DOFIGNORE: 2,
+};
+
 
 let walkAnimation = null;
 let faceUpAnimation = null;
@@ -50,7 +56,6 @@ let lastMouseY = 0;
 let mouseInactiveFrames = 0;
 const MOUSE_INACTIVE_THRESHOLD = 60; // frames before returning to original position
 const MOUSE_MOVEMENT_THRESHOLD = 2; // pixels to consider as movement
-
 
 
 const textureloader = new THREE.TextureLoader();
@@ -419,10 +424,18 @@ function completeSetup() {
     rotation: new THREE.Euler(Math.PI / 2.1, 0, Math.PI / -2),
     colors: { cloudColor: '#000000', skyTopColor: '#151761', skyBottomColor: '#000000' }
   });
+  skyPlane.layers.set(LAYERS.DOFIGNORE);
   scene.add(skyPlane);
   
   // Initialize cursor plane
-  // cursorPlane.init(scene, camera);
+ 
+  cursorPlane.init(scene, camera);
+
+  if (cursorPlane.plane) {
+  cursorPlane.plane.layers.set(LAYERS.DOFIGNORE);
+}
+  
+
   
   // Create initial vegetation
   VegetationManager.createInitialVegetationWhenReady(scene);
@@ -583,6 +596,7 @@ function setupPostProcessing() {
 
 
   const depthPass = new SimpleDepthPass(scene, camera);
+  depthPass.excludeLayer(LAYERS.DOFIGNORE);
   composer.addPass(depthPass);
 
 }
