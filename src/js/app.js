@@ -14,9 +14,11 @@ import * as VegetationManager from './vegetation-manager.js';
 import * as LoadingManager from './loading-manager.js';
 import { BasicBlurPass } from './basic-blur-pass.js';
 import { SimpleDepthPass } from './depth-visualization-pass.js';
+import { DepthDrivenBlurPass } from './custom-dof.js';
 
 
 
+let depthBlurPass;
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass;
@@ -160,6 +162,19 @@ function setupEventListeners() {
         }
       }
     }
+
+    if (e.key === 'd' && depthBlurPass) {
+    depthBlurPass.toggleDebugDepth();
+    console.log('Depth visualization toggled');
+  }
+  
+  // Add number keys to adjust blur amount
+  if (e.key >= '1' && e.key <= '9' && depthBlurPass) {
+    const blurAmount = parseInt(e.key);
+    depthBlurPass.setMaxBlurSize(blurAmount);
+    console.log('Max blur size set to:', blurAmount);
+  }
+
   });
   
   // Setup scrubber
@@ -409,6 +424,8 @@ function completeSetup() {
   // Create camera
   camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 2, 0);
+  camera.layers.enable(LAYERS.DOFIGNORE); // This is the fix!
+
   if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
   
   // Setup composer and passes
@@ -424,8 +441,16 @@ function completeSetup() {
     rotation: new THREE.Euler(Math.PI / 2.1, 0, Math.PI / -2),
     colors: { cloudColor: '#000000', skyTopColor: '#151761', skyBottomColor: '#000000' }
   });
-  skyPlane.layers.set(LAYERS.DOFIGNORE);
+  // skyPlane.layers.set(LAYERS.DOFIGNORE);
   scene.add(skyPlane);
+
+  const material = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide });
+  const plane = new THREE.PlaneGeometry(1000, 1000);
+  const background = new THREE.Mesh(plane, material);
+  background.position.set(0, 0, -200);
+  scene.add(background);
+  // console.log('Background added:', background);
+ 
   
   // Initialize cursor plane
  
@@ -442,6 +467,7 @@ function completeSetup() {
   
   // Hide loading screen and enable controls
   GUI.hideLoadingScreen();
+
   setTimeout(() => {
     // Double-check vegetation creation after a short delay
     VegetationManager.createInitialVegetationWhenReady(scene);
@@ -569,9 +595,9 @@ function setupPostProcessing() {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   
+  
 
- const blurPass = new BasicBlurPass(3.0); // Start with blur size 3
-  composer.addPass(blurPass);
+
   
   // Bloom pass
   bloomPass = new UnrealBloomPass(
@@ -589,19 +615,25 @@ function setupPostProcessing() {
   // Chromatic aberration pass
   chromaticAberrationPass = new ChromaticAberrationPass(config.chromaticAberration.strength);
   chromaticAberrationPass.update(renderer, window.innerWidth, window.innerHeight);
-  
-  // Add passes in order
-  composer.addPass(bloomPass);
+ 
   // composer.addPass(displacementScenePass); // Uncomment if needed
 
+//  const blurPass = new BasicBlurPass(3.0); // Start with blur size 3
+//   composer.addPass(blurPass);
 
-  const depthPass = new SimpleDepthPass(scene, camera);
-  depthPass.excludeLayer(LAYERS.DOFIGNORE);
-  composer.addPass(depthPass);
+
+  // const depthPass = new SimpleDepthPass(scene, camera);
+  // depthPass.excludeLayer(LAYERS.DOFIGNORE);
+  // composer.addPass(depthPass);
+
+  // Create depth-driven blur pass
+  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 1.0); // 5.0 = max blur size
+  depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
+  composer.addPass(depthBlurPass);
+  composer.addPass(bloomPass); // Add bloom after blur
+  
 
 }
-
-
 
 // Setup lights
 function setupLights() {
