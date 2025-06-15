@@ -1,4 +1,4 @@
-// depth-driven-blur-pass.js - Simple depth-based blur
+// depth-driven-blur-pass.js - Enhanced depth-based blur with radial gaussian sampling
 import * as THREE from 'three';
 import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 
@@ -9,6 +9,10 @@ export class DepthDrivenBlurPass extends Pass {
     this.scene = scene;
     this.camera = camera;
     this.maxBlurSize = maxBlurSize;
+    
+    // Blur quality settings
+    this.directions = 16.0;
+    this.quality = 3.0;
     
     // Layer exclusion properties
     this.excludedLayers = new Set();
@@ -30,7 +34,7 @@ export class DepthDrivenBlurPass extends Pass {
       depthPacking: THREE.RGBADepthPacking
     });
     
-    // Create blur shader material
+    // Create blur shader material with radial gaussian blur
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: null },
@@ -39,6 +43,8 @@ export class DepthDrivenBlurPass extends Pass {
         maxBlurSize: { value: maxBlurSize },
         cameraNear: { value: camera.near },
         cameraFar: { value: camera.far },
+        directions: { value: this.directions },
+        quality: { value: this.quality },
         debugDepth: { value: false }
       },
       
@@ -57,8 +63,12 @@ export class DepthDrivenBlurPass extends Pass {
         uniform float maxBlurSize;
         uniform float cameraNear;
         uniform float cameraFar;
+        uniform float directions;
+        uniform float quality;
         uniform bool debugDepth;
         varying vec2 vUv;
+        
+        const float Pi = 6.28318530718; // Pi*2
         
         // Get depth value (0 = near, 1 = far)
         float readDepth(vec2 coord) {
@@ -76,36 +86,31 @@ export class DepthDrivenBlurPass extends Pass {
             return;
           }
           
-          // Use depth directly as blur amount
+          // Calculate blur radius based on depth
           // depth is 0 (near) to 1 (far)
           float blurSize = depth * maxBlurSize;
+          vec2 radius = blurSize / resolution;
           
-          // Simple box blur
-          vec2 texelSize = 1.0 / resolution;
-          vec4 result = vec4(0.0);
-          float total = 0.0;
+          // Start with center sample
+          vec4 color = texture2D(tDiffuse, vUv);
           
-          // Variable sample count based on blur size
-          int sampleCount = int(mix(1.0, 9.0, depth));
-          
-          if (sampleCount == 1) {
-            gl_FragColor = texture2D(tDiffuse, vUv);
+          // Early exit for no blur
+          if (blurSize < 0.1) {
+            gl_FragColor = color;
             return;
           }
           
-          // Box blur with variable size
-          for(int x = -4; x <= 4; x++) {
-            for(int y = -4; y <= 4; y++) {
-              // Skip samples outside our sample count
-              if (abs(x) > sampleCount/2 || abs(y) > sampleCount/2) continue;
-              
-              vec2 offset = vec2(float(x), float(y)) * texelSize * blurSize;
-              result += texture2D(tDiffuse, vUv + offset);
-              total += 1.0;
+          // Radial gaussian blur
+          for(float d = 0.0; d < Pi; d += Pi / directions) {
+            for(float i = 1.0 / quality; i <= 1.0; i += 1.0 / quality) {
+              vec2 offset = vec2(cos(d), sin(d)) * radius * i;
+              color += texture2D(tDiffuse, vUv + offset);
             }
           }
           
-          gl_FragColor = result / total;
+          // Normalize (accounting for all samples including center)
+          color /= quality * directions - 15.0;
+          gl_FragColor = color;
         }
       `
     });
@@ -128,6 +133,13 @@ export class DepthDrivenBlurPass extends Pass {
   setMaxBlurSize(size) {
     this.maxBlurSize = size;
     this.material.uniforms.maxBlurSize.value = size;
+  }
+  
+  setBlurQuality(directions, quality) {
+    this.directions = directions;
+    this.quality = quality;
+    this.material.uniforms.directions.value = directions;
+    this.material.uniforms.quality.value = quality;
   }
   
   toggleDebugDepth() {
@@ -196,20 +208,33 @@ export class DepthDrivenBlurPass extends Pass {
 import { DepthDrivenBlurPass } from './depth-driven-blur-pass.js';
 
 // In setupPostProcessing():
-const depthBlurPass = new DepthDrivenBlurPass(scene, camera, 5.0); // 5.0 = max blur size
+const depthBlurPass = new DepthDrivenBlurPass(scene, camera, 8.0); // 8.0 = max blur size
 depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
 composer.addPass(depthBlurPass);
 composer.addPass(bloomPass);
+
+// Adjust blur quality (more directions/quality = smoother but slower)
+depthBlurPass.setBlurQuality(16.0, 3.0); // directions, quality
 
 // Press 'D' to toggle depth visualization:
 document.addEventListener('keydown', (e) => {
   if (e.key === 'd') {
     depthBlurPass.toggleDebugDepth();
   }
+  
+  // Number keys to adjust blur amount
+  if (e.key >= '1' && e.key <= '9') {
+    const blurAmount = parseInt(e.key);
+    depthBlurPass.setMaxBlurSize(blurAmount);
+  }
+  
+  // Q/W to adjust directions (quality)
+  if (e.key === 'q') {
+    depthBlurPass.setBlurQuality(8.0, 3.0); // Lower quality
+  } else if (e.key === 'w') {
+    depthBlurPass.setBlurQuality(32.0, 4.0); // Higher quality
+  }
 });
-
-// Change blur amount dynamically:
-depthBlurPass.setMaxBlurSize(10.0);
 
 // In onWindowResize():
 depthBlurPass.setSize(window.innerWidth, window.innerHeight);
