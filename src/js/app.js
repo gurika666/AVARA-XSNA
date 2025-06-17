@@ -27,6 +27,7 @@ let skyPlane, gltfMixer, gltfModel, gltfAnimationActions = [];
 let spotlight, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2();
 let mouseX = 0, mouseY = 0, font, txthdr;
 let cursorPlane = new CursorPlane();
+let titleModel = null;
 
 
 const LAYERS = {
@@ -73,6 +74,12 @@ const config = {
     scale: new THREE.Vector3(1, 1, 1),
     rotation: new THREE.Euler(0, 0, 0),
     autoplay: true
+  },
+  titleGlb: {
+    path: 'mesh/title.glb',
+    position: new THREE.Vector3(0, 2, -30), // Adjust position as needed
+    scale: new THREE.Vector3(1, 1, 1),
+    rotation: new THREE.Euler(0, 0, 0)
   }
 };
 
@@ -93,6 +100,7 @@ const resources = {
   displacement: null,
   font: null,
   glb: null,
+  titleGlb: null,
   audio: null,
   vegetation: null
 };
@@ -217,6 +225,9 @@ async function loadAllResources() {
     
     // Load GLB model
     loadGLB(config.glb.path, manager),
+
+    //Load title
+    loadTitleGLB(config.titleGlb.path, manager),
     
     // Load audio (not tracked by manager)
     loadAudio('audio/xsna.mp3'),
@@ -364,6 +375,70 @@ async function loadGLB(path, manager) {
       },
       undefined,
       error => reject(new Error('Failed to load GLB model'))
+    );
+  });
+}
+
+async function loadTitleGLB(path, manager) {
+  return new Promise((resolve, reject) => {
+    new GLTFLoader(manager).load(
+      path,
+      gltf => {
+        titleModel = gltf.scene;
+        
+        // Apply materials if needed (similar to the main GLB)
+if(resources.txthdr) {
+  
+          titleModel.traverse(child => {
+            if (child.isMesh) {
+             
+              const mat = new THREE.MeshPhysicalMaterial({
+
+              envMap: resources.txthdr,
+              envMapIntensity : 10.0,
+              metalness : 1,
+              roughness : 0.3,
+
+
+            }) 
+
+              // mat.needsUpdate = true;
+              child.material = mat;
+              console.log("hey")
+            }
+
+          });
+        
+}
+        // Apply transform from config
+        const { position: p, scale: s, rotation: r } = config.titleGlb;
+        titleModel.position.copy(p);
+        titleModel.scale.copy(s);
+        titleModel.rotation.copy(r);
+        
+        // Add to scene
+        scene.add(titleModel);
+        // console.log(titleModel)
+        
+        // Handle animations if the title has any
+        if (gltf.animations?.length) {
+          const titleMixer = new THREE.AnimationMixer(titleModel);
+          gltf.animations.forEach(clip => {
+            const action = titleMixer.clipAction(clip);
+            action.setLoop(THREE.LoopRepeat);
+            action.play();
+          });
+          
+          // Store mixer reference if you need to update it in the animation loop
+          titleModel.userData.mixer = titleMixer;
+        }
+        
+        resources.titleGlb = titleModel;
+        console.log('Title GLB loaded successfully');
+        resolve();
+      },
+      undefined,
+      error => reject(new Error('Failed to load title GLB'))
     );
   });
 }
