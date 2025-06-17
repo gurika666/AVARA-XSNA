@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 
 export class DepthDrivenBlurPass extends Pass {
-  constructor(scene, camera, maxBlurSize = 5.0) {
+  constructor(scene, camera, maxBlurSize = 10.0) {
     super();
     
     this.scene = scene;
@@ -203,39 +203,3 @@ export class DepthDrivenBlurPass extends Pass {
   }
 }
 
-// Usage in app.js:
-/*
-import { DepthDrivenBlurPass } from './depth-driven-blur-pass.js';
-
-// In setupPostProcessing():
-const depthBlurPass = new DepthDrivenBlurPass(scene, camera, 8.0); // 8.0 = max blur size
-depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
-composer.addPass(depthBlurPass);
-composer.addPass(bloomPass);
-
-// Adjust blur quality (more directions/quality = smoother but slower)
-depthBlurPass.setBlurQuality(16.0, 3.0); // directions, quality
-
-// Press 'D' to toggle depth visualization:
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'd') {
-    depthBlurPass.toggleDebugDepth();
-  }
-  
-  // Number keys to adjust blur amount
-  if (e.key >= '1' && e.key <= '9') {
-    const blurAmount = parseInt(e.key);
-    depthBlurPass.setMaxBlurSize(blurAmount);
-  }
-  
-  // Q/W to adjust directions (quality)
-  if (e.key === 'q') {
-    depthBlurPass.setBlurQuality(8.0, 3.0); // Lower quality
-  } else if (e.key === 'w') {
-    depthBlurPass.setBlurQuality(32.0, 4.0); // Higher quality
-  }
-});
-
-// In onWindowResize():
-depthBlurPass.setSize(window.innerWidth, window.innerHeight);
-*/

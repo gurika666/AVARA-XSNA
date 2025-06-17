@@ -41,8 +41,8 @@ let isInTransition = false; // Track if we're currently transitioning
 let transitionStartTime = null; // Track when transition started
 
 // Animation timing
-const animStartTime = 10; // When to start transitioning to faceUp
-const animEndTime = 20;  // Camera animation end time
+const animStartTime = 60; // When to start transitioning to faceUp
+const animEndTime = 80;  // Camera animation end time
 const transitionTime = 12; // When to start transitioning to faceUp animation
 const transitionDuration = 2.8; // Duration of the blend in seconds
 
@@ -107,6 +107,12 @@ async function init() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   scene.fog = new THREE.Fog(0x000000, 30, 100);
+
+
+  const axesHelper = new THREE.AxesHelper(20);
+  axesHelper.position.set(0, 0, -10); // Position it where we can see it
+// scene.add(axesHelper);
+
   
   // Setup UI and show loading screen
   GUI.setupUI(startAnimation, pauseAnimation);
@@ -618,16 +624,10 @@ function setupPostProcessing() {
  
   // composer.addPass(displacementScenePass); // Uncomment if needed
 
-//  const blurPass = new BasicBlurPass(3.0); // Start with blur size 3
-//   composer.addPass(blurPass);
 
-
-  // const depthPass = new SimpleDepthPass(scene, camera);
-  // depthPass.excludeLayer(LAYERS.DOFIGNORE);
-  // composer.addPass(depthPass);
 
   // Create depth-driven blur pass
-  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 1.0); // 5.0 = max blur size
+  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 3.0); // 5.0 = max blur size
   depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
   composer.addPass(depthBlurPass);
   composer.addPass(bloomPass); // Add bloom after blur
