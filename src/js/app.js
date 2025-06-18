@@ -12,23 +12,26 @@ import * as GUI from './gui.js';
 import * as AudioController from './audio-controller.js';
 import * as VegetationManager from './vegetation-manager.js';
 import * as LoadingManager from './loading-manager.js';
-import { BasicBlurPass } from './basic-blur-pass.js';
-import { SimpleDepthPass } from './depth-visualization-pass.js';
 import { DepthDrivenBlurPass } from './custom-dof.js';
+import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
+import { TextManager } from './TextManager.js';
+
+
 
 
 
 let depthBlurPass;
 
 // Globals
-let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass;
+let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass, textManager;
 let isAnimating = false, animationId = null, lastTime = null, isSetupComplete = false;
 let skyPlane, gltfMixer, gltfModel, gltfAnimationActions = [];
 let spotlight, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2();
 let mouseX = 0, mouseY = 0, font, txthdr;
 let cursorPlane = new CursorPlane();
 let titleModel = null;
-
+let titleMixer;
+let textmaterial;
 
 const LAYERS = {
   DOFIGNORE: 2,
@@ -64,7 +67,7 @@ const MOUSE_MOVEMENT_THRESHOLD = 2; // pixels to consider as movement
 const textureloader = new THREE.TextureLoader();
 const config = {
   text: { size: 2, height: 0.1, depth: 1, z: -50 },
-  bloom: { strength: 0.7, radius: 5, threshold: 0.5 },
+  bloom: { strength: 0.9, radius: 2, threshold: 0.3 },
   chromaticAberration: { strength: 0.1 },
   displacement: { scale: 0.5, speed: 0.2 },
   camera: { fov: 40 },
@@ -77,7 +80,7 @@ const config = {
   },
   titleGlb: {
     path: 'mesh/title.glb',
-    position: new THREE.Vector3(0, 2, -30), // Adjust position as needed
+    position: new THREE.Vector3(0, 4, -30), // Adjust position as needed
     scale: new THREE.Vector3(1, 1, 1),
     rotation: new THREE.Euler(0, 0, 0)
   }
@@ -128,9 +131,9 @@ async function init() {
   
   // Initialize controllers
   AudioController.init({ 
-    onTimeUpdate: (t, dt) => displacementScenePass?.updateTextBasedOnAudioTime(t, dt, textAppearTimes),
-    onScrubComplete: t => displacementScenePass?.resetTextDisplay(t, textAppearTimes)
-  });
+  onTimeUpdate: (t, dt) => textManager?.update(t, dt, textAppearTimes),
+  onScrubComplete: t => textManager?.reset(t, textAppearTimes)
+});
   
   // Setup event listeners
   setupEventListeners();
@@ -195,51 +198,73 @@ function setupEventListeners() {
   GUI.setupScrubber(AudioController.handleScrubberInput, AudioController.handleScrubberChange);
 }
 
-// Centralized resource loading
 async function loadAllResources() {
+
   let allResourcesLoaded = false;
   
   const manager = LoadingManager.create(
     onProgress, 
     () => {
-      // This is called when ALL resources tracked by the manager are loaded
       allResourcesLoaded = true;
-      // console.log('LoadingManager reports all resources loaded');
     },
     (url) => {
       console.error('Failed to load:', url);
     }
   );
   
-  // Start all loading tasks
-  const loadingTasks = [
-    // Load HDR textures
-    loadHDRTexture('images/txt.hdr', 'txthdr', manager),
-    loadHDRTexture('images/01.hdr', 'hdri', manager),
-    
+  // PHASE 1: Load Audio First (Critical for timing)
+  // console.log('Loading audio...');
+
+  try {
+    await loadAudio('audio/xsna.mp3');
+    console.log('✓ Audio loaded successfully');
+  } catch (error) {
+    console.error('Failed to load audio:', error);
+    // Decide if you want to continue without audio or throw error
+    throw error;
+  }
+  
+  // PHASE 2: Load HDR textures (Critical for materials)
+  // console.log('Loading HDR environment textures...');
+ 
+  try {
+    await Promise.all([
+      loadHDRTexture('images/txt.hdr', 'txthdr', manager),
+      loadHDRTexture('images/01.hdr', 'hdri', manager)
+    ]);
+    console.log('✓ HDR textures loaded successfully');
+  } catch (error) {
+    console.error('Failed to load HDR textures:', error);
+    throw error;
+  }
+  
+  // PHASE 3: Load everything else in parallel
+  // console.log('Loading models, textures, and vegetation...');
+
+  const remainingTasks = [
     // Load displacement texture
     loadTexture('images/displacement-map.png', 'displacement', manager),
     
     // Load font
     loadFont('fonts/Monarch_Regular.json', manager),
     
-    // Load GLB model
+    // Load GLB models (they can now use the loaded HDR textures)
     loadGLB(config.glb.path, manager),
-
-    //Load title
     loadTitleGLB(config.titleGlb.path, manager),
     
-    // Load audio (not tracked by manager)
-    loadAudio('audio/xsna.mp3'),
-    
-    // Initialize vegetation (this will use the manager internally)
+    // Initialize vegetation
     initVegetation(manager)
   ];
   
-  // Wait for all promises to resolve
-  await Promise.all(loadingTasks);
+  try {
+    await Promise.all(remainingTasks);
+    // console.log('✓ All models and textures loaded successfully');
+  } catch (error) {
+    console.error('Failed to load remaining resources:', error);
+    throw error;
+  }
   
-  // Also wait for the manager to report completion
+  // Wait for manager to report completion
   if (!allResourcesLoaded) {
     await new Promise(resolve => {
       const checkInterval = setInterval(() => {
@@ -249,7 +274,6 @@ async function loadAllResources() {
         }
       }, 100);
       
-      // Timeout after 10 seconds
       setTimeout(() => {
         clearInterval(checkInterval);
         resolve();
@@ -257,7 +281,7 @@ async function loadAllResources() {
     });
   }
   
-  console.log('All resources fully loaded');
+  // console.log('✅ All resources fully loaded');
 }
 
 // Loading functions
@@ -268,6 +292,15 @@ async function loadHDRTexture(path, key, manager) {
       texture => {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         resources[key] = texture;
+        textmaterial = new THREE.MeshPhysicalMaterial({
+
+              envMap: resources.hdri,
+              envMapIntensity : 0.6,
+              metalness : 1,
+              roughness : 0,
+
+
+            }) 
         resolve();
       },
       undefined,
@@ -387,29 +420,19 @@ async function loadTitleGLB(path, manager) {
         titleModel = gltf.scene;
         
         // Apply materials if needed (similar to the main GLB)
-if(resources.txthdr) {
+
   
           titleModel.traverse(child => {
             if (child.isMesh) {
              
-              const mat = new THREE.MeshPhysicalMaterial({
 
-              envMap: resources.txthdr,
-              envMapIntensity : 10.0,
-              metalness : 1,
-              roughness : 0.3,
-
-
-            }) 
-
-              // mat.needsUpdate = true;
-              child.material = mat;
-              console.log("hey")
+              child.material = textmaterial;
+             
             }
 
           });
         
-}
+
         // Apply transform from config
         const { position: p, scale: s, rotation: r } = config.titleGlb;
         titleModel.position.copy(p);
@@ -422,11 +445,12 @@ if(resources.txthdr) {
         
         // Handle animations if the title has any
         if (gltf.animations?.length) {
-          const titleMixer = new THREE.AnimationMixer(titleModel);
+          titleMixer = new THREE.AnimationMixer(titleModel);
           gltf.animations.forEach(clip => {
             const action = titleMixer.clipAction(clip);
             action.setLoop(THREE.LoopRepeat);
             action.play();
+           
           });
           
           // Store mixer reference if you need to update it in the animation loop
@@ -541,7 +565,27 @@ function completeSetup() {
   cursorPlane.plane.layers.set(LAYERS.DOFIGNORE);
 }
   
+ // Initialize text manager instead of displacement pass
+  textManager = new TextManager();
+  textManager.init(font, scene);
+  
+  // Configure text appearance
+  textManager.setTextConfig({
+    size: 0.8,
+    height: 0.05,
+    depth: 0.1,
+    startZ: -50,
+    endZ: 10,
+    yPosition: 2,
+    xSpread: 15
+  });
+  
+  textManager.setMoveSpeed(15);
 
+    if (resources.txthdr) {
+ 
+    textManager.setMaterial(textmaterial);
+  }
   
   // Create initial vegetation
   VegetationManager.createInitialVegetationWhenReady(scene);
@@ -673,18 +717,36 @@ function updateHeadLookAt(camera, deltaTime) {
 }
 
 function setupPostProcessing() {
+
   composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
+
+  
+  // composer.addPass(new RenderPass(scene, camera));
   
   
 
 
+ const taaRenderPass = new TAARenderPass(scene, camera);
+  taaRenderPass.unbiased = false;
+  taaRenderPass.sampleLevel = 1; // 0 = 1 sample, 1 = 2 samples, 2 = 4 samples
+  composer.addPass(taaRenderPass);
   
   // Bloom pass
-  bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    config.bloom.strength, config.bloom.radius, config.bloom.threshold
-  );
+ bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  config.bloom.strength, 
+  config.bloom.radius, 
+  config.bloom.threshold
+);
+bloomPass.renderTargetsHorizontal.forEach(target => {
+  target.texture.minFilter = THREE.LinearFilter;
+  target.texture.magFilter = THREE.LinearFilter;
+});
+bloomPass.renderTargetsVertical.forEach(target => {
+  target.texture.minFilter = THREE.LinearFilter;
+  target.texture.magFilter = THREE.LinearFilter;
+});
+  
   
   // Displacement pass
   displacementScenePass = new DisplacementScenePass(renderer, config.displacement.scale);
@@ -705,12 +767,15 @@ function setupPostProcessing() {
   depthBlurPass = new DepthDrivenBlurPass(scene, camera, 3.0); // 5.0 = max blur size
   depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
   composer.addPass(depthBlurPass);
-  composer.addPass(bloomPass); // Add bloom after blur
+  composer.addPass(bloomPass);
+
+
+  
   
 
 }
 
-// Setup lights
+
 function setupLights() {
   scene.add(new THREE.DirectionalLight(0x111111, 5));
   
@@ -732,7 +797,7 @@ function onWindowResize() {
   }
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer?.setSize(window.innerWidth, window.innerHeight);
-  displacementScenePass?.setSize(window.innerWidth, window.innerHeight);
+  // displacementScenePass?.setSize(window.innerWidth, window.innerHeight);
 }
 
 function animate(time) {
@@ -743,6 +808,16 @@ function animate(time) {
   lastTime = time;
   
   gltfMixer?.update(deltaTime);
+  titleMixer?.update(deltaTime);
+
+    // Update text manager
+  if (textManager) {
+    textManager.update(
+      AudioController.getCurrentTime(), 
+      deltaTime, 
+      textAppearTimes
+    );
+  }
   
   const audioTime = AudioController.getCurrentTime();
   updateCloudUniforms(skyPlane.material, audioTime * 0.03, window.innerWidth, window.innerHeight);
