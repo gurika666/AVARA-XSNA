@@ -6,7 +6,7 @@ import * as GUI from './gui.js';
 const BLADE_WIDTH = 0.2, BLADE_HEIGHT = 1.2, BLADE_HEIGHT_VARIATION = 0.8, BLADE_VERTEX_COUNT = 5, BLADE_TIP_OFFSET = 0.1;
 const GRASS_SPREAD = 10, TREE_SPREAD = 20, MIN_DISTANCE = 5, REMOVAL_Z = 20, GENERATION_Z = -70;
 const MIN_PATCH_SIZE = 10, MAX_PATCH_SIZE = 15, MIN_BLADE_COUNT = 500, MAX_BLADE_COUNT = 600;
-const TREE_CLEARANCE_FROM_CENTER = 5
+const TREE_CLEARANCE_FROM_CENTER = 7
 
 // State
 let grassPatches = [], trees = [], treeModels = [], resourcesLoaded = { trees: false, grass: false };

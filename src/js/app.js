@@ -82,7 +82,7 @@ const config = {
   },
   titleGlb: {
     path: 'mesh/title.glb',
-    position: new THREE.Vector3(0, 4, -20), // Adjust position as needed
+    position: new THREE.Vector3(0, 4, -18), // Adjust position as needed
     scale: new THREE.Vector3(0.7, 0.7, 0.7),
     rotation: new THREE.Euler(0, 0, 0)
   }
