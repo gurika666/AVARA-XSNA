@@ -82,9 +82,15 @@ const config = {
   },
   titleGlb: {
     path: 'mesh/title.glb',
-    position: new THREE.Vector3(0, 4, -18), // Adjust position as needed
+    position: new THREE.Vector3(0, 4, -18), // Starting position
     scale: new THREE.Vector3(0.7, 0.7, 0.7),
-    rotation: new THREE.Euler(0, 0, 0)
+    rotation: new THREE.Euler(-0.2, 0, 0),
+    animation: {
+      startTime: 0, // Start moving at 10 seconds
+      endTime: 10,   // End at 40 seconds (adjust as needed)
+      startZ: -18,   // Starting Z position
+      endZ: 10       // End Z position (past the camera)
+    }
   }
 };
 
@@ -628,6 +634,26 @@ function setupHeadTracking() {
   }
 }
 
+function updateTitlePosition(audioTime) {
+  if (!titleModel) return;
+  
+  const { startTime, endTime, startZ, endZ } = config.titleGlb.animation;
+  
+  if (audioTime < startTime) {
+    // Before animation starts, keep at starting position
+    titleModel.position.z = startZ;
+  } else if (audioTime >= startTime && audioTime <= endTime) {
+    // During animation, interpolate position
+    const progress = (audioTime - startTime) / (endTime - startTime);
+    // Use easing for smoother motion
+    const easedProgress = progress * progress * (3 - 2 * progress); // smoothstep
+    titleModel.position.z = THREE.MathUtils.lerp(startZ, endZ, easedProgress);
+  } else {
+    // After animation ends, keep at end position
+    titleModel.position.z = endZ;
+  }
+}
+
 function updateHeadLookAt(camera, deltaTime) {
   if (!headBone || !isAnimating) return;
   
@@ -823,6 +849,11 @@ function animate(time) {
   gltfMixer?.update(deltaTime);
   titleMixer?.update(deltaTime);
 
+  const audioTime = AudioController.getCurrentTime();
+  
+  // Update title position based on audio time
+  updateTitlePosition(audioTime);
+
     // Update text manager
   if (textManager) {
     textManager.update(
@@ -832,7 +863,6 @@ function animate(time) {
     );
   }
   
-  const audioTime = AudioController.getCurrentTime();
   updateCloudUniforms(skyPlane.material, audioTime * 0.03, window.innerWidth, window.innerHeight);
   
   const vegetationCounts = VegetationManager.updateVegetation(scene, 0.5 * (deltaTime * 60));
