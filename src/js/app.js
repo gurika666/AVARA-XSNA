@@ -68,7 +68,7 @@ const textureloader = new THREE.TextureLoader();
 const config = {
   text: { size: 2, height: 0.1, depth: 1, z: -50 },
   bloom: { strength: 0.9, radius: 2, threshold: 0.3 },
-  chromaticAberration: { strength: 0.1 },
+  chromaticAberration: { strength: 0.01 },
   displacement: { scale: 0.5, speed: 0.2 },
   camera: { fov: 40 },
   glb: {
@@ -80,8 +80,8 @@ const config = {
   },
   titleGlb: {
     path: 'mesh/title.glb',
-    position: new THREE.Vector3(0, 4, -30), // Adjust position as needed
-    scale: new THREE.Vector3(1, 1, 1),
+    position: new THREE.Vector3(0, 4, -20), // Adjust position as needed
+    scale: new THREE.Vector3(0.7, 0.7, 0.7),
     rotation: new THREE.Euler(0, 0, 0)
   }
 };
@@ -440,8 +440,8 @@ async function loadTitleGLB(path, manager) {
         titleModel.rotation.copy(r);
         
         // Add to scene
-        scene.add(titleModel);
-        // console.log(titleModel)
+        // scene.add(titleModel);
+
         
         // Handle animations if the title has any
         if (gltf.animations?.length) {
@@ -554,7 +554,10 @@ function completeSetup() {
   const background = new THREE.Mesh(plane, material);
   background.position.set(0, 0, -200);
   scene.add(background);
-  // console.log('Background added:', background);
+ 
+
+  const light = new THREE.AmbientLight(0xffffff, 0.001);
+  // scene.add(light);
  
   
   // Initialize cursor plane
@@ -574,7 +577,7 @@ function completeSetup() {
     size: 0.8,
     height: 0.05,
     depth: 0.1,
-    startZ: -50,
+    startZ: -100,
     endZ: 10,
     yPosition: 2,
     xSpread: 15
@@ -764,11 +767,18 @@ bloomPass.renderTargetsVertical.forEach(target => {
 
 
   // Create depth-driven blur pass
-  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 3.0); // 5.0 = max blur size
-  depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
-  composer.addPass(depthBlurPass);
-  composer.addPass(bloomPass);
+  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 2.0); // 5.0 = max blur size
 
+
+// Or let it auto-calculate again:
+
+
+  depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
+
+  composer.addPass(chromaticAberrationPass)
+  composer.addPass(depthBlurPass);
+  // composer.addPass(bloomPass); 
+  
 
   
   

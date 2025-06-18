@@ -18,7 +18,6 @@ class TextManager {
       startZ: -50,  // Starting Z position (far from camera)
       endZ: 10,     // End Z position (past camera)
       yPosition: 2, // Height of text
-      // xSpread: 15   // Random X spread
     };
     
     this.moveSpeed = 15; // Speed at which text moves toward camera
@@ -103,26 +102,19 @@ class TextManager {
     // Create the text mesh
     const textMesh = new THREE.Mesh(textGeometry, this.textMaterial.clone());
     
-    // Position text with some random X spread for variety
-    const xOffset = (Math.random() - 0.5) * this.textConfig.xSpread;
-    const yOffset = (Math.random() - 0.5) * 2; // Slight Y variation
-    
+    // Position text centered with no random offsets
     textMesh.position.set(
-      centerOffset + xOffset, 
-      this.textConfig.yPosition + yOffset, 
+      centerOffset, 
+      this.textConfig.yPosition, 
       this.textConfig.startZ
     );
     
-    // // Add slight random rotation for visual interest
-    // textMesh.rotation.y = (Math.random() - 0.5) * 0.3;
-    // textMesh.rotation.z = (Math.random() - 0.5) * 0.1;
+    // No rotations at all
     
     // Store metadata
     textMesh.userData = { 
       text: text,
-      creationTime: currentAudioTime,
-      initialX: textMesh.position.x,
-      initialY: textMesh.position.y
+      creationTime: currentAudioTime
     };
     
     // Add to scene and tracking array
@@ -163,12 +155,8 @@ class TextManager {
       // Update position
       textMesh.position.z = expectedZ;
       
-      // Optional: Add some floating animation
-      const floatTime = currentTime * 2;
-      textMesh.position.y = textMesh.userData.initialY + Math.sin(floatTime + i) * 0.1;
-      
-      // Optional: Slight rotation animation
-      // textMesh.rotation.y += deltaTime * 0.2;
+      // No floating animation - keep Y position constant
+      // No rotation animation
       
       // Fade out as text gets close to camera
       if (textMesh.position.z > 0) {

@@ -1,4 +1,4 @@
-// depth-driven-blur-pass.js - Enhanced depth-based blur with radial gaussian sampling
+// depth-driven-blur-pass.js - Enhanced depth-based blur with smooth transitions
 import * as THREE from 'three';
 import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 
@@ -70,11 +70,17 @@ export class DepthDrivenBlurPass extends Pass {
         
         const float Pi = 6.28318530718; // Pi*2
         
-        // Get depth value (0 = near, 1 = far)
+        // Get depth value with smooth transitions
         float readDepth(vec2 coord) {
           float fragCoordZ = texture2D(tDepth, coord).x;
           float viewZ = (cameraNear * cameraFar) / ((cameraFar - cameraNear) * fragCoordZ - cameraFar);
-          return (-viewZ - cameraNear) / (cameraFar - cameraNear);
+          
+          // Linear depth (0 = near, 1 = far)
+          float linearDepth = (- viewZ - cameraNear ) / (cameraFar  - cameraNear);
+          
+          // Simple smooth transition using smoothstep
+          // return smoothstep(0.1, 0.9, linearDepth);
+          return pow(linearDepth * 10.0, 0.5);
         }
         
         void main() {
@@ -87,7 +93,7 @@ export class DepthDrivenBlurPass extends Pass {
           }
           
           // Calculate blur radius based on depth
-          // depth is 0 (near) to 1 (far)
+          // depth is 0 (near) to 1 (far) but now smoothed
           float blurSize = depth * maxBlurSize;
           vec2 radius = blurSize / resolution;
           
@@ -202,4 +208,3 @@ export class DepthDrivenBlurPass extends Pass {
     this.fsQuad.geometry.dispose();
   }
 }
-
