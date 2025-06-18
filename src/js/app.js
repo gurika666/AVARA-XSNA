@@ -8,6 +8,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { DisplacementScenePass } from './DisplacementScenePass.js';
 import { ChromaticAberrationPass, CursorPlane, createSkyPlane, updateCloudUniforms } from './shader-manager.js';
+import {GammaCorrectionShader} from 'three/examples/jsm/shaders/GammaCorrectionShader'
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import * as GUI from './gui.js';
 import * as AudioController from './audio-controller.js';
 import * as VegetationManager from './vegetation-manager.js';
@@ -67,7 +69,7 @@ const MOUSE_MOVEMENT_THRESHOLD = 2; // pixels to consider as movement
 const textureloader = new THREE.TextureLoader();
 const config = {
   text: { size: 2, height: 0.1, depth: 1, z: -50 },
-  bloom: { strength: 0.9, radius: 2, threshold: 0.3 },
+  bloom: { strength: 0.1, radius: 2, threshold: 0.1 },
   chromaticAberration: { strength: 0.01 },
   displacement: { scale: 0.5, speed: 0.2 },
   camera: { fov: 40 },
@@ -112,6 +114,7 @@ const resources = {
 async function init() {
   // Setup renderer first
   renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.outputEncoding = THREE.sRGBEncoding
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
   
@@ -440,7 +443,7 @@ async function loadTitleGLB(path, manager) {
         titleModel.rotation.copy(r);
         
         // Add to scene
-        // scene.add(titleModel);
+        scene.add(titleModel);
 
         
         // Handle animations if the title has any
@@ -766,18 +769,18 @@ bloomPass.renderTargetsVertical.forEach(target => {
 
 
 
-  // Create depth-driven blur pass
-  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 2.0); // 5.0 = max blur size
-
-
-// Or let it auto-calculate again:
-
+  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 1.0); // 5.0 = max blur size
 
   depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
 
+ const gamma = new ShaderPass(GammaCorrectionShader);
+
+
+
   composer.addPass(chromaticAberrationPass)
   composer.addPass(depthBlurPass);
-  // composer.addPass(bloomPass); 
+  composer.addPass(bloomPass); 
+  composer.addPass(gamma);
   
 
   
