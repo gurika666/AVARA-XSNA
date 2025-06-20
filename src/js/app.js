@@ -136,8 +136,7 @@ async function init() {
 // scene.add(axesHelper);
 
   
-  // Setup UI and show loading screen
-  GUI.setupUI(startAnimation, pauseAnimation);
+GUI.setupUI(); // No parameters needed anymore
   GUI.showLoadingScreen();
   
   // Initialize controllers
@@ -536,23 +535,25 @@ async function loadRiveOverlay() {
   try {
     riveOverlay = new SimpleRiveOverlay();
     
-    // Load your test.riv file
     await riveOverlay.load({
-      src: 'animations/test.riv',  // Path to your test.riv file
-      width: 500,                  // Canvas width
-      height: 500,                 // Canvas height
-      position: { x: 50, y: 50 },  // Center of screen
-      autoplay: true               // Start playing immediately
+      src: 'animations/test.riv',
+      width: 200,  // Adjust size as needed
+      height: 200,
+      position: { x: 50, y: 50 }, // Center of screen
+      autoplay: true,
+      onClick: () => {
+        // Toggle play/pause on click
+        if (isSetupComplete) {
+          if (isAnimating) {
+            pauseAnimation();
+          } else {
+            startAnimation();
+          }
+        }
+      }
     });
     
     console.log('Rive overlay loaded successfully');
-    
-    // Optional: Control the animation
-    // riveOverlay.pause();
-    // riveOverlay.play();
-    // riveOverlay.hide();
-    // riveOverlay.show();
-    // riveOverlay.setPosition(80, 20); // Move to top right
     
   } catch (error) {
     console.error('Failed to load Rive overlay:', error);

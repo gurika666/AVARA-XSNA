@@ -5,6 +5,7 @@ export class SimpleRiveOverlay {
   constructor() {
     this.rive = null;
     this.canvas = null;
+    this.clickCallback = null;
   }
 
   async load(config = {}) {
@@ -12,9 +13,12 @@ export class SimpleRiveOverlay {
       src = 'animations/test.riv',
       width = 400,
       height = 400,
-      position = { x: 50, y: 50 }, // percentage from center
-      autoplay = true
+      position = { x: 50, y: 50 },
+      autoplay = true,
+      onClick = null // Simple click callback
     } = config;
+
+    this.clickCallback = onClick;
 
     // Create canvas
     this.canvas = document.createElement('canvas');
@@ -25,8 +29,9 @@ export class SimpleRiveOverlay {
       left: ${position.x}%;
       top: ${position.y}%;
       transform: translate(-50%, -50%);
-      pointer-events: none;
+      pointer-events: auto;
       z-index: 100;
+      cursor: pointer;
     `;
     
     document.body.appendChild(this.canvas);
@@ -36,6 +41,7 @@ export class SimpleRiveOverlay {
       src: src,
       canvas: this.canvas,
       autoplay: autoplay,
+      stateMachines: 'State Machine 1', // Default state machine
       onLoad: () => {
         console.log('Rive animation loaded');
         this.rive.resizeDrawingSurfaceToCanvas();
@@ -45,15 +51,14 @@ export class SimpleRiveOverlay {
       }
     });
 
+    // Simple click handler
+    this.canvas.addEventListener('click', (event) => {
+      if (this.clickCallback) {
+        this.clickCallback();
+      }
+    });
+
     return this.rive;
-  }
-
-  play() {
-    if (this.rive) this.rive.play();
-  }
-
-  pause() {
-    if (this.rive) this.rive.pause();
   }
 
   show() {
