@@ -17,12 +17,14 @@ import * as LoadingManager from './loading-manager.js';
 import { DepthDrivenBlurPass } from './custom-dof.js';
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
 import { TextManager } from './TextManager.js';
+import { SimpleRiveOverlay } from './rive-overlay.js';
 
 
 
 
 
 let depthBlurPass;
+let riveOverlay;
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass, textManager;
@@ -116,7 +118,7 @@ const resources = {
   vegetation: null
 };
 
-// Initialize
+
 async function init() {
   // Setup renderer first
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -524,14 +526,40 @@ async function initVegetation(manager) {
   });
 }
 
-// Progress callback
 function onProgress(itemUrl, itemsLoaded, itemsTotal) {
   const progress = (itemsLoaded / itemsTotal) * 100;
   GUI.updateLoadingProgress('overall', progress);
   // console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
 }
 
-// Complete setup after loading
+async function loadRiveOverlay() {
+  try {
+    riveOverlay = new SimpleRiveOverlay();
+    
+    // Load your test.riv file
+    await riveOverlay.load({
+      src: 'animations/test.riv',  // Path to your test.riv file
+      width: 500,                  // Canvas width
+      height: 500,                 // Canvas height
+      position: { x: 50, y: 50 },  // Center of screen
+      autoplay: true               // Start playing immediately
+    });
+    
+    console.log('Rive overlay loaded successfully');
+    
+    // Optional: Control the animation
+    // riveOverlay.pause();
+    // riveOverlay.play();
+    // riveOverlay.hide();
+    // riveOverlay.show();
+    // riveOverlay.setPosition(80, 20); // Move to top right
+    
+  } catch (error) {
+    console.error('Failed to load Rive overlay:', error);
+  }
+}
+
+
 function completeSetup() {
   if (isSetupComplete) return;
   
@@ -568,7 +596,8 @@ function completeSetup() {
   const light = new THREE.AmbientLight(0xffffff, 0.001);
   // scene.add(light);
  
-  
+    loadRiveOverlay();
+
   // Initialize cursor plane
  
   cursorPlane.init(scene, camera);
@@ -579,7 +608,7 @@ function completeSetup() {
   
  // Initialize text manager instead of displacement pass
   textManager = new TextManager();
-  textManager.init(font, scene);
+  // textManager.init(font, scene);
   
   // Configure text appearance
   textManager.setTextConfig({
@@ -612,6 +641,8 @@ function completeSetup() {
   }, 100);
   
   isSetupComplete = true;
+
+ 
 }
 
 function setupHeadTracking() {
