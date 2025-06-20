@@ -157,7 +157,11 @@ async function init() {
 
 function onProgress(itemUrl, itemsLoaded, itemsTotal) {
   const progress = (itemsLoaded / itemsTotal) * 100;
+<<<<<<< HEAD
   // console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
+=======
+  console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
+>>>>>>> 90f5167 (⚡️ Audio sync)
 }
 
 function setupEventListeners() {
@@ -871,8 +875,12 @@ function animate(time) {
 
   const audioTime = AudioController.getCurrentTime();
 
+<<<<<<< HEAD
   AudioController.update(deltaTime);
    
+=======
+   AudioController.update(deltaTime);
+>>>>>>> 90f5167 (⚡️ Audio sync)
   
   // Update title position based on audio time
   updateTitlePosition(audioTime);

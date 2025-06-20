@@ -42,7 +42,11 @@ export function loadAudio(audioPath) {
       .then(buffer => {
         audioBuffer = buffer;
         isAudioLoaded = true;
+<<<<<<< HEAD
         // console.log('Audio loaded, duration:', buffer.duration);
+=======
+        console.log('Audio loaded, duration:', buffer.duration);
+>>>>>>> 90f5167 (⚡️ Audio sync)
         resolve();
       })
       .catch(error => {
@@ -90,7 +94,11 @@ export function startAudio() {
   // Handle end of playback
   sourceNode.onended = () => {
     if (isPlaying && getCurrentTime() >= audioBuffer.duration - 0.1) {
+<<<<<<< HEAD
       // console.log("Audio ended naturally");
+=======
+      console.log("Audio ended naturally");
+>>>>>>> 90f5167 (⚡️ Audio sync)
       isPlaying = false;
       pauseTime = 0;
       startTime = 0;
@@ -103,7 +111,11 @@ export function startAudio() {
   startTime = audioContext.currentTime - offset;
   isPlaying = true;
   
+<<<<<<< HEAD
   // console.log("Audio started from:", offset);
+=======
+  console.log("Audio started from:", offset);
+>>>>>>> 90f5167 (⚡️ Audio sync)
 }
 
 // Pause audio playback
@@ -119,7 +131,11 @@ export function pauseAudio() {
   sourceNode = null;
   isPlaying = false;
   
+<<<<<<< HEAD
   // console.log("Audio paused at:", pauseTime);
+=======
+  console.log("Audio paused at:", pauseTime);
+>>>>>>> 90f5167 (⚡️ Audio sync)
 }
 
 // Toggle play/pause
@@ -165,7 +181,11 @@ export function isCurrentlyPlaying() {
 // Set volume (0-1)
 export function setVolume(value) {
   // You can implement a GainNode if volume control is needed
+<<<<<<< HEAD
   // console.log("Volume control not implemented in this version");
+=======
+  console.log("Volume control not implemented in this version");
+>>>>>>> 90f5167 (⚡️ Audio sync)
 }
 
 // Reset audio to beginning
