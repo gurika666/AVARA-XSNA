@@ -533,10 +533,18 @@ function onProgress(itemUrl, itemsLoaded, itemsTotal) {
 
 async function loadRiveOverlay() {
   try {
-
     riveOverlay = new SimpleRiveOverlay();
     
-    await riveOverlay.load({});
+    await riveOverlay.load({
+      onPlayPause: () => {
+        // Toggle play/pause state
+        if (isAnimating) {
+          pauseAnimation();
+        } else {
+          startAnimation();
+        }
+      }
+    });
     
   } catch (error) {
     console.error('Failed to load Rive overlay:', error);

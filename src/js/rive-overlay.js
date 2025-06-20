@@ -5,7 +5,7 @@ export class SimpleRiveOverlay {
   constructor() {
     this.rive = null;
     this.canvas = null;
-    this.clickCallback = null;
+    this.playPauseCallback = null;
   }
 
   async load(config = {}) {
@@ -15,10 +15,10 @@ export class SimpleRiveOverlay {
       height = 400,
       position = { x: 50, y: 50 },
       autoplay = true,
-      onClick = null // Simple click callback
+      onPlayPause = null 
     } = config;
 
-    // this.clickCallback = onClick;
+    this.playPauseCallback = onPlayPause;
 
     // Create canvas
     this.canvas = document.createElement('canvas');
@@ -36,6 +36,7 @@ export class SimpleRiveOverlay {
     
     document.body.appendChild(this.canvas);
 
+
     // Create Rive instance
     this.rive = new Rive({
       src: src,
@@ -49,9 +50,16 @@ export class SimpleRiveOverlay {
        onStateChange: (state) => {
         
         // console.log("state changed", state);
+
+
         if (state.data == 'playbutton_click') {
 
             console.log("Play button clicked");
+
+              // Trigger play/pause callback
+          if (this.playPauseCallback) {
+            this.playPauseCallback();
+          }
         }
        
     },
