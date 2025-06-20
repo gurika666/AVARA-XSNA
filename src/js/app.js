@@ -533,27 +533,10 @@ function onProgress(itemUrl, itemsLoaded, itemsTotal) {
 
 async function loadRiveOverlay() {
   try {
+
     riveOverlay = new SimpleRiveOverlay();
     
-    await riveOverlay.load({
-      src: 'animations/test.riv',
-      width: 200,  // Adjust size as needed
-      height: 200,
-      position: { x: 50, y: 50 }, // Center of screen
-      autoplay: true,
-      onClick: () => {
-        // Toggle play/pause on click
-        if (isSetupComplete) {
-          if (isAnimating) {
-            pauseAnimation();
-          } else {
-            startAnimation();
-          }
-        }
-      }
-    });
-    
-    console.log('Rive overlay loaded successfully');
+    await riveOverlay.load({});
     
   } catch (error) {
     console.error('Failed to load Rive overlay:', error);

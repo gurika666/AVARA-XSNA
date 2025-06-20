@@ -1,5 +1,5 @@
 // simple-rive-overlay.js
-import { Rive } from '@rive-app/canvas';
+import { Rive, EventType, RiveEventType } from '@rive-app/canvas'
 
 export class SimpleRiveOverlay {
   constructor() {
@@ -18,7 +18,7 @@ export class SimpleRiveOverlay {
       onClick = null // Simple click callback
     } = config;
 
-    this.clickCallback = onClick;
+    // this.clickCallback = onClick;
 
     // Create canvas
     this.canvas = document.createElement('canvas');
@@ -46,35 +46,46 @@ export class SimpleRiveOverlay {
         console.log('Rive animation loaded');
         this.rive.resizeDrawingSurfaceToCanvas();
       },
+       onStateChange: (state) => {
+        
+        // console.log("state changed", state);
+        if (state.data == 'playbutton_click') {
+
+            console.log("Play button clicked");
+        }
+       
+    },
       onLoadError: (error) => {
+        
         console.error('Failed to load Rive animation:', error);
       }
+      
     });
 
-    // Simple click handler
-    this.canvas.addEventListener('click', (event) => {
-      if (this.clickCallback) {
-        this.clickCallback();
-      }
-    });
+    this.rive.on(EventType.RiveEvent, this.onRiveEventReceived.bind(this));
 
     return this.rive;
   }
 
-  show() {
-    if (this.canvas) this.canvas.style.display = 'block';
-  }
+  onRiveEventReceived(riveEvent) {
+    const eventData = riveEvent.data;
+    const eventProperties = eventData.properties;
+    if (eventData.type === RiveEventType.General) {
+    //   console.log("Event name", eventData.name);
 
-  hide() {
-    if (this.canvas) this.canvas.style.display = 'none';
-  }
-
-  setPosition(x, y) {
-    if (this.canvas) {
-      this.canvas.style.left = `${x}%`;
-      this.canvas.style.top = `${y}%`;
+      if(eventData.name === "play"){
+        // console.log("Playing animation");
+        
+        }
+    } else if (eventData.type === RiveEventType.OpenUrl) {
+      console.log("Event name", eventData.name);
+      window.open(eventData.url);
     }
   }
+
+
+   
+
 
   dispose() {
     if (this.rive) {
