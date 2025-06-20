@@ -1,255 +1,160 @@
-// audio-controller.js - Handles all audio and scrubbing functionality
+// audio-controller.js - Using Web Audio API directly for reliability
 
 import * as THREE from "three";
-import * as GUI from './gui.js';
 
 // Audio variables
-let audio, audioListener, audioLoader;
+let audioContext;
+let audioBuffer;
+let sourceNode;
+let startTime = 0;
+let pauseTime = 0;
 let isPlaying = false;
+let isAudioLoaded = false;
 
-// let isAudioLoaded = false;
-let currentAudioTime = 0;
-let audioStartTime = 0;
-let isScrubbing = false;
-let audioDuration = 0;
-
+// Three.js audio listener for 3D audio (if needed)
+let audioListener;
 
 // Callbacks from main app
 let callbacks = {
-  onTimeUpdate: null,
-  onScrubComplete: null
+  onTimeUpdate: null
 };
 
 // Initialize the audio controller
 export function init(options = {}) {
   // Setup callbacks
   callbacks = {
-    onTimeUpdate: options.onTimeUpdate || function() {},
-    onScrubComplete: options.onScrubComplete || function() {}
+    onTimeUpdate: options.onTimeUpdate || function() {}
   };
   
-  // Create audio listener
-  audioListener = new THREE.AudioListener();
+  // Create audio context
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
   
-  // Set up audio loader
-  audioLoader = new THREE.AudioLoader();
+  // Create Three.js audio listener (for compatibility)
+  audioListener = new THREE.AudioListener();
 }
 
 // Load the audio file
 export function loadAudio(audioPath) {
-  // Load audio
-  audioLoader.load(
-    audioPath,
-    (audioBuffer) => {
-      // Create audio object now that we have the buffer
-      audio = new THREE.Audio(audioListener);
-      audio.setBuffer(audioBuffer);
-      audio.setLoop(false);
-      audio.setVolume(0.5);
-      
-      // Set duration for GUI
-      audioDuration = audioBuffer.duration;
-      
-      // Mark as loaded
-      isAudioLoaded = true;
-      GUI.updateLoadingProgress('audio', 100);
-    },
-    (xhr) => {
-      GUI.updateLoadingProgress('audio', xhr.loaded / xhr.total * 100);
-    },
-    (error) => {
-      console.error('Audio loading error:', error);
-      isAudioLoaded = true; // Mark as loaded even if it failed
-    }
-  );
+  return new Promise((resolve, reject) => {
+    fetch(audioPath)
+      .then(response => response.arrayBuffer())
+      .then(data => audioContext.decodeAudioData(data))
+      .then(buffer => {
+        audioBuffer = buffer;
+        isAudioLoaded = true;
+        console.log('Audio loaded, duration:', buffer.duration);
+        resolve();
+      })
+      .catch(error => {
+        console.error('Audio loading error:', error);
+        reject(error);
+      });
+  });
 }
 
-// Check if audio is loaded
-export function isAudioLoaded() {
-  return isAudioLoaded;
-}
-
-// Get the audio listener (to be added to camera)
+// Get the audio listener (for compatibility)
 export function getAudioListener() {
   return audioListener;
 }
 
 // Get current audio time
 export function getCurrentTime() {
-  return currentAudioTime;
+  if (!isPlaying) {
+    return pauseTime;
+  }
+  return audioContext.currentTime - startTime;
 }
 
 // Get audio duration
 export function getAudioDuration() {
-  return audioDuration;
+  return audioBuffer?.duration || 0;
 }
 
 // Start audio playback
 export function startAudio() {
-  // Make sure audio is initialized before trying to play
-  if (!audio || !audio.context) {
-    console.warn("Audio not fully initialized yet");
+  if (!audioBuffer || !isAudioLoaded) {
+    console.warn("Audio not loaded yet");
     return;
   }
   
-  // Start audio
-  if (currentAudioTime > 0) {
-    audio.offset = currentAudioTime;
+  // Resume audio context if suspended
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
   }
   
-  audio.play();
-  audioStartTime = audio.context.currentTime - currentAudioTime;
+  // Create new source node
+  sourceNode = audioContext.createBufferSource();
+  sourceNode.buffer = audioBuffer;
+  sourceNode.connect(audioContext.destination);
+  
+  // Handle end of playback
+  sourceNode.onended = () => {
+    if (isPlaying && getCurrentTime() >= audioBuffer.duration - 0.1) {
+      console.log("Audio ended naturally");
+      isPlaying = false;
+      pauseTime = 0;
+      startTime = 0;
+    }
+  };
+  
+  // Start playback from pause position
+  const offset = pauseTime;
+  sourceNode.start(0, offset);
+  startTime = audioContext.currentTime - offset;
   isPlaying = true;
   
-  // Make sure text positions match current audio time
-  if (callbacks.onScrubComplete) {
-    callbacks.onScrubComplete(currentAudioTime);
-  }
+  console.log("Audio started from:", offset);
 }
 
 // Pause audio playback
 export function pauseAudio() {
-  if (!audio) return;
+  if (!sourceNode || !isPlaying) return;
   
-  audio.pause();
+  // Save current position
+  pauseTime = getCurrentTime();
+  
+  // Stop the source
+  sourceNode.stop();
+  sourceNode.disconnect();
+  sourceNode = null;
   isPlaying = false;
+  
+  console.log("Audio paused at:", pauseTime);
+}
+
+// Toggle play/pause
+export function togglePlayPause() {
+  if (!audioBuffer || !isAudioLoaded) {
+    console.warn("Audio not loaded yet");
+    return false;
+  }
+  
+  if (isPlaying) {
+    pauseAudio();
+  } else {
+    startAudio();
+  }
+  
+  return isPlaying;
 }
 
 // Update function called from main animation loop
-export function update(deltaTime, treeCount) {
-  // Update timer - only if audio is properly initialized
-  if (audio && audio.buffer) {
-    // Only try to use audio.context if audio is playing
-    if (isPlaying && audio.context && typeof audio.context.currentTime === 'number') {
-      try {
-        currentAudioTime = audio.context.currentTime - audioStartTime;
-      } catch (error) {
-        console.warn("Error accessing audio context time:", error);
-        // Fallback to incrementing time based on deltaTime
-        currentAudioTime += deltaTime;
-      }
-    }
-    
-    if (isNaN(currentAudioTime)) {
-      currentAudioTime = 0;
-    }
-    
-    if (currentAudioTime > audio.buffer.duration) {
-      currentAudioTime = audio.buffer.duration;
-    }
-    
-    // Update GUI with current time
-    try {
-      GUI.updateTimeDisplay(currentAudioTime, treeCount, isScrubbing);
-    } catch (e) {
-      console.warn("Error updating time display:", e);
-    }
-    
-    // Call the time update callback for text and other time-based events
-    if (!isScrubbing && callbacks.onTimeUpdate) {
-      callbacks.onTimeUpdate(currentAudioTime, deltaTime);
-    }
-  }
-}
-
-// Handle scrubber input - called from GUI
-export function handleScrubberInput() {
-  // Get the current value of the scrubber
-  const scrubTime = parseFloat(GUI.scrubber.value);
+export function update(deltaTime) {
+  if (!audioBuffer || !isAudioLoaded) return;
   
-  // Update the time display
-  GUI.scrubberTimeDisplay.textContent = GUI.formatTime(scrubTime);
+  const currentTime = getCurrentTime();
   
-  // Set scrubbing flag
-  isScrubbing = true;
-  
-  // If playing, pause temporarily
-  if (isPlaying) {
-    audio.pause();
+  // Call the time update callback
+  if (callbacks.onTimeUpdate) {
+    callbacks.onTimeUpdate(currentTime, deltaTime);
   }
   
-  // Update current time
-  currentAudioTime = scrubTime;
-}
-
-// Handle scrubber change - called from GUI
-export function handleScrubberChange() {
-  // Get the new time position
-  const scrubTime = parseFloat(GUI.scrubber.value);
-  
-  // Update current time
-  currentAudioTime = scrubTime;
-  
-  // Call the scrub complete callback to reset text display
-  if (callbacks.onScrubComplete) {
-    callbacks.onScrubComplete(scrubTime);
+  // Check if we've reached the end
+  if (isPlaying && currentTime >= audioBuffer.duration) {
+    isPlaying = false;
+    pauseTime = 0;
+    startTime = 0;
   }
-  
-  // Update audio position
-  if (audio.buffer) {
-    if (isPlaying) {
-      // Stop current playback
-      audio.stop();
-      
-      // Set the offset and play from that position
-      audio.offset = scrubTime;
-      audio.play();
-      
-      // Update time reference
-      audioStartTime = audio.context.currentTime - scrubTime;
-    }
-  }
-  
-  // Reset scrubbing flag
-  isScrubbing = false;
-}
-
-// Create audio analyzer for visualizations (optional)
-export function createAnalyzer() {
-  if (!audio || !audio.context) {
-    return null;
-  }
-  
-  const analyzer = audio.context.createAnalyser();
-  analyzer.fftSize = 256;
-  audio.setFilter(analyzer);
-  
-  return analyzer;
-}
-
-// Get frequency data for visualizations (optional)
-export function getFrequencyData(analyzer) {
-  if (!analyzer) return null;
-  
-  const dataArray = new Uint8Array(analyzer.frequencyBinCount);
-  analyzer.getByteFrequencyData(dataArray);
-  
-  return dataArray;
-}
-
-// Set volume
-export function setVolume(value) {
-  if (audio) {
-    audio.setVolume(Math.max(0, Math.min(1, value)));
-  }
-}
-
-// Mute/unmute audio
-export function toggleMute() {
-  if (!audio) return;
-  
-  if (audio.getVolume() > 0) {
-    // Store current volume and mute
-    audio.userData = audio.userData || {};
-    audio.userData.previousVolume = audio.getVolume();
-    audio.setVolume(0);
-  } else {
-    // Restore previous volume
-    const prevVol = (audio.userData && audio.userData.previousVolume) || 0.5;
-    audio.setVolume(prevVol);
-  }
-  
-  return audio.getVolume() === 0; // Return true if now muted
 }
 
 // Check if currently playing
@@ -257,40 +162,19 @@ export function isCurrentlyPlaying() {
   return isPlaying;
 }
 
-// Add audio effects like reverb, delay, etc.
-export function addAudioEffects() {
-  if (!audio || !audio.context) return;
-  
-  // Example: Add reverb effect
-  const convolver = audio.context.createConvolver();
-  
-  // Create impulse response for reverb
-  // This would normally load from an impulse response file
-  // But for simplicity we'll create a short one
-  const impulseLength = audio.context.sampleRate * 2; // 2 seconds
-  const impulse = audio.context.createBuffer(2, impulseLength, audio.context.sampleRate);
-  
-  // Fill the impulse response
-  for (let channel = 0; channel < 2; channel++) {
-    const channelData = impulse.getChannelData(channel);
-    for (let i = 0; i < impulseLength; i++) {
-      // Simple exponential decay
-      channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / impulseLength, 2);
-    }
+// Set volume (0-1)
+export function setVolume(value) {
+  // You can implement a GainNode if volume control is needed
+  console.log("Volume control not implemented in this version");
+}
+
+// Reset audio to beginning
+export function reset() {
+  if (sourceNode && isPlaying) {
+    sourceNode.stop();
+    sourceNode.disconnect();
   }
-  
-  convolver.buffer = impulse;
-  
-  // Connect the audio to the convolver
-  const gainNode = audio.context.createGain();
-  gainNode.gain.value = 0.3; // Adjust the effect intensity
-  
-  // Connect the nodes
-  audio.setFilters([gainNode, convolver]);
-  
-  return {
-    setWetDryMix: (wet) => {
-      gainNode.gain.value = wet;
-    }
-  };
+  pauseTime = 0;
+  startTime = 0;
+  isPlaying = false;
 }

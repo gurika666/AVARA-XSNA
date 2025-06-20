@@ -10,7 +10,6 @@ import { DisplacementScenePass } from './DisplacementScenePass.js';
 import { ChromaticAberrationPass, CursorPlane, createSkyPlane, updateCloudUniforms } from './shader-manager.js';
 import {GammaCorrectionShader} from 'three/examples/jsm/shaders/GammaCorrectionShader'
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
-import * as GUI from './gui.js';
 import * as AudioController from './audio-controller.js';
 import * as VegetationManager from './vegetation-manager.js';
 import * as LoadingManager from './loading-manager.js';
@@ -136,13 +135,11 @@ async function init() {
 // scene.add(axesHelper);
 
   
-GUI.setupUI(); // No parameters needed anymore
-  GUI.showLoadingScreen();
   
   // Initialize controllers
   AudioController.init({ 
   onTimeUpdate: (t, dt) => textManager?.update(t, dt, textAppearTimes),
-  onScrubComplete: t => textManager?.reset(t, textAppearTimes)
+ 
 });
   
   // Setup event listeners
@@ -154,11 +151,15 @@ GUI.setupUI(); // No parameters needed anymore
     completeSetup();
   } catch (error) {
     console.error('Loading failed:', error);
-    GUI.showLoadingError(error.message);
+    
   }
 }
 
-// Setup event listeners
+function onProgress(itemUrl, itemsLoaded, itemsTotal) {
+  const progress = (itemsLoaded / itemsTotal) * 100;
+  console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
+}
+
 function setupEventListeners() {
   // Window resize
   window.addEventListener('resize', onWindowResize);
@@ -204,8 +205,7 @@ function setupEventListeners() {
 
   });
   
-  // Setup scrubber
-  GUI.setupScrubber(AudioController.handleScrubberInput, AudioController.handleScrubberChange);
+
 }
 
 async function loadAllResources() {
@@ -294,7 +294,6 @@ async function loadAllResources() {
   // console.log('✅ All resources fully loaded');
 }
 
-// Loading functions
 async function loadHDRTexture(path, key, manager) {
   return new Promise((resolve, reject) => {
     new RGBELoader(manager).load(
@@ -477,7 +476,6 @@ async function loadTitleGLB(path, manager) {
   });
 }
 
-
 async function loadAudio(path) {
   return new Promise((resolve) => {
     AudioController.loadAudio(path);
@@ -525,20 +523,13 @@ async function initVegetation(manager) {
   });
 }
 
-function onProgress(itemUrl, itemsLoaded, itemsTotal) {
-  const progress = (itemsLoaded / itemsTotal) * 100;
-  GUI.updateLoadingProgress('overall', progress);
-  // console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
-}
-
 async function loadRiveOverlay() {
   try {
     riveOverlay = new SimpleRiveOverlay();
     
     await riveOverlay.load({
       onPlayPause: () => {
-        // Toggle play/pause state
-        if (isAnimating) {
+          if (isAnimating) {
           pauseAnimation();
         } else {
           startAnimation();
@@ -550,7 +541,6 @@ async function loadRiveOverlay() {
     console.error('Failed to load Rive overlay:', error);
   }
 }
-
 
 function completeSetup() {
   if (isSetupComplete) return;
@@ -623,13 +613,12 @@ function completeSetup() {
   // Create initial vegetation
   VegetationManager.createInitialVegetationWhenReady(scene);
   
-  // Hide loading screen and enable controls
-  GUI.hideLoadingScreen();
+
 
   setTimeout(() => {
     // Double-check vegetation creation after a short delay
     VegetationManager.createInitialVegetationWhenReady(scene);
-    GUI.enableControls(AudioController.getAudioDuration(), VegetationManager.getTreeCount());
+   
   }, 100);
   
   isSetupComplete = true;
@@ -662,19 +651,27 @@ function updateTitlePosition(audioTime) {
   
   const { startTime, endTime, startZ, endZ } = config.titleGlb.animation;
   
+  // Calculate the target position based on audio time
+  let targetZ;
+  
   if (audioTime < startTime) {
     // Before animation starts, keep at starting position
-    titleModel.position.z = startZ;
+    targetZ = startZ;
   } else if (audioTime >= startTime && audioTime <= endTime) {
     // During animation, interpolate position
     const progress = (audioTime - startTime) / (endTime - startTime);
     // Use easing for smoother motion
     const easedProgress = progress * progress * (3 - 2 * progress); // smoothstep
-    titleModel.position.z = THREE.MathUtils.lerp(startZ, endZ, easedProgress);
+    targetZ = THREE.MathUtils.lerp(startZ, endZ, easedProgress);
   } else {
     // After animation ends, keep at end position
-    titleModel.position.z = endZ;
+    targetZ = endZ;
   }
+  
+  // Smoothly interpolate to target position to avoid jumps
+  const currentZ = titleModel.position.z;
+  const smoothingFactor = 0.1; // Adjust for smoother/faster transitions
+  titleModel.position.z = THREE.MathUtils.lerp(currentZ, targetZ, smoothingFactor);
 }
 
 function updateHeadLookAt(camera, deltaTime) {
@@ -837,7 +834,6 @@ bloomPass.renderTargetsVertical.forEach(target => {
 
 }
 
-
 function setupLights() {
   scene.add(new THREE.DirectionalLight(0x111111, 5));
   
@@ -863,6 +859,7 @@ function onWindowResize() {
 }
 
 function animate(time) {
+
   if (!isAnimating) return;
   animationId = requestAnimationFrame(animate);
   
@@ -873,6 +870,8 @@ function animate(time) {
   titleMixer?.update(deltaTime);
 
   const audioTime = AudioController.getCurrentTime();
+
+   AudioController.update(deltaTime);
   
   // Update title position based on audio time
   updateTitlePosition(audioTime);
@@ -1056,9 +1055,7 @@ function animate(time) {
   if (scene && camera) composer.render();
 }
 
-// Controls
 function startAnimation() {
-  GUI.updatePlaybackState(true);
   AudioController.startAudio();
   lastTime = null;
   isAnimating = true;
@@ -1073,8 +1070,8 @@ function pauseAnimation() {
     animationId = null;
   }
   isAnimating = false;
-  GUI.updatePlaybackState(false);
 }
+
 
 // GLB Animation Controls
 const animControl = (method, i = 0) => {
