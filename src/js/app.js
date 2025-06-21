@@ -10,6 +10,7 @@ import { DisplacementScenePass } from './DisplacementScenePass.js';
 import { ChromaticAberrationPass, CursorPlane, createSkyPlane, updateCloudUniforms } from './shader-manager.js';
 import {GammaCorrectionShader} from 'three/examples/jsm/shaders/GammaCorrectionShader'
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import * as GUI from './gui.js';
 import * as AudioController from './audio-controller.js';
 import * as VegetationManager from './vegetation-manager.js';
 import * as LoadingManager from './loading-manager.js';
@@ -135,11 +136,13 @@ async function init() {
 // scene.add(axesHelper);
 
   
+GUI.setupUI(); // No parameters needed anymore
+  GUI.showLoadingScreen();
   
   // Initialize controllers
   AudioController.init({ 
   onTimeUpdate: (t, dt) => textManager?.update(t, dt, textAppearTimes),
- 
+  onScrubComplete: t => textManager?.reset(t, textAppearTimes)
 });
   
   // Setup event listeners
@@ -151,19 +154,11 @@ async function init() {
     completeSetup();
   } catch (error) {
     console.error('Loading failed:', error);
-    
+    GUI.showLoadingError(error.message);
   }
 }
 
-function onProgress(itemUrl, itemsLoaded, itemsTotal) {
-  const progress = (itemsLoaded / itemsTotal) * 100;
-<<<<<<< HEAD
-  // console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
-=======
-  console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
->>>>>>> 90f5167 (⚡️ Audio sync)
-}
-
+// Setup event listeners
 function setupEventListeners() {
   // Window resize
   window.addEventListener('resize', onWindowResize);
@@ -209,7 +204,8 @@ function setupEventListeners() {
 
   });
   
-
+  // Setup scrubber
+  GUI.setupScrubber(AudioController.handleScrubberInput, AudioController.handleScrubberChange);
 }
 
 async function loadAllResources() {
@@ -231,7 +227,7 @@ async function loadAllResources() {
 
   try {
     await loadAudio('audio/xsna.mp3');
-    // console.log('✓ Audio loaded successfully');
+    console.log('✓ Audio loaded successfully');
   } catch (error) {
     console.error('Failed to load audio:', error);
     // Decide if you want to continue without audio or throw error
@@ -246,7 +242,7 @@ async function loadAllResources() {
       loadHDRTexture('images/txt.hdr', 'txthdr', manager),
       loadHDRTexture('images/01.hdr', 'hdri', manager)
     ]);
-    // console.log('✓ HDR textures loaded successfully');
+    console.log('✓ HDR textures loaded successfully');
   } catch (error) {
     console.error('Failed to load HDR textures:', error);
     throw error;
@@ -298,6 +294,7 @@ async function loadAllResources() {
   // console.log('✅ All resources fully loaded');
 }
 
+// Loading functions
 async function loadHDRTexture(path, key, manager) {
   return new Promise((resolve, reject) => {
     new RGBELoader(manager).load(
@@ -471,7 +468,7 @@ async function loadTitleGLB(path, manager) {
         }
         
         resources.titleGlb = titleModel;
-        // console.log('Title GLB loaded successfully');
+        console.log('Title GLB loaded successfully');
         resolve();
       },
       undefined,
@@ -479,6 +476,7 @@ async function loadTitleGLB(path, manager) {
     );
   });
 }
+
 
 async function loadAudio(path) {
   return new Promise((resolve) => {
@@ -527,13 +525,20 @@ async function initVegetation(manager) {
   });
 }
 
+function onProgress(itemUrl, itemsLoaded, itemsTotal) {
+  const progress = (itemsLoaded / itemsTotal) * 100;
+  GUI.updateLoadingProgress('overall', progress);
+  // console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
+}
+
 async function loadRiveOverlay() {
   try {
     riveOverlay = new SimpleRiveOverlay();
     
     await riveOverlay.load({
       onPlayPause: () => {
-          if (isAnimating) {
+        // Toggle both audio and animation together
+        if (isAnimating) {
           pauseAnimation();
         } else {
           startAnimation();
@@ -545,6 +550,7 @@ async function loadRiveOverlay() {
     console.error('Failed to load Rive overlay:', error);
   }
 }
+
 
 function completeSetup() {
   if (isSetupComplete) return;
@@ -617,12 +623,13 @@ function completeSetup() {
   // Create initial vegetation
   VegetationManager.createInitialVegetationWhenReady(scene);
   
-
+  // Hide loading screen and enable controls
+  GUI.hideLoadingScreen();
 
   setTimeout(() => {
     // Double-check vegetation creation after a short delay
     VegetationManager.createInitialVegetationWhenReady(scene);
-   
+    GUI.enableControls(AudioController.getAudioDuration(), VegetationManager.getTreeCount());
   }, 100);
   
   isSetupComplete = true;
@@ -655,27 +662,19 @@ function updateTitlePosition(audioTime) {
   
   const { startTime, endTime, startZ, endZ } = config.titleGlb.animation;
   
-  // Calculate the target position based on audio time
-  let targetZ;
-  
   if (audioTime < startTime) {
     // Before animation starts, keep at starting position
-    targetZ = startZ;
+    titleModel.position.z = startZ;
   } else if (audioTime >= startTime && audioTime <= endTime) {
     // During animation, interpolate position
     const progress = (audioTime - startTime) / (endTime - startTime);
     // Use easing for smoother motion
     const easedProgress = progress * progress * (3 - 2 * progress); // smoothstep
-    targetZ = THREE.MathUtils.lerp(startZ, endZ, easedProgress);
+    titleModel.position.z = THREE.MathUtils.lerp(startZ, endZ, easedProgress);
   } else {
     // After animation ends, keep at end position
-    targetZ = endZ;
+    titleModel.position.z = endZ;
   }
-  
-  // Smoothly interpolate to target position to avoid jumps
-  const currentZ = titleModel.position.z;
-  const smoothingFactor = 0.1; // Adjust for smoother/faster transitions
-  titleModel.position.z = THREE.MathUtils.lerp(currentZ, targetZ, smoothingFactor);
 }
 
 function updateHeadLookAt(camera, deltaTime) {
@@ -838,6 +837,7 @@ bloomPass.renderTargetsVertical.forEach(target => {
 
 }
 
+
 function setupLights() {
   scene.add(new THREE.DirectionalLight(0x111111, 5));
   
@@ -863,7 +863,6 @@ function onWindowResize() {
 }
 
 function animate(time) {
-
   if (!isAnimating) return;
   animationId = requestAnimationFrame(animate);
   
@@ -874,22 +873,9 @@ function animate(time) {
   titleMixer?.update(deltaTime);
 
   const audioTime = AudioController.getCurrentTime();
-
-<<<<<<< HEAD
-  AudioController.update(deltaTime);
-   
-=======
-   AudioController.update(deltaTime);
->>>>>>> 90f5167 (⚡️ Audio sync)
   
   // Update title position based on audio time
   updateTitlePosition(audioTime);
-
-
-   if (riveOverlay && riveOverlay.progressInput && AudioController.getAudioDuration() > 0) {
-    const progressPercent = (audioTime / AudioController.getAudioDuration()) * 100;
-    riveOverlay.setProgress(progressPercent);
-  }
 
     // Update text manager
   if (textManager) {
@@ -1070,7 +1056,9 @@ function animate(time) {
   if (scene && camera) composer.render();
 }
 
+// Controls
 function startAnimation() {
+  GUI.updatePlaybackState(true);
   AudioController.startAudio();
   lastTime = null;
   isAnimating = true;
@@ -1085,8 +1073,8 @@ function pauseAnimation() {
     animationId = null;
   }
   isAnimating = false;
+  GUI.updatePlaybackState(false);
 }
-
 
 // GLB Animation Controls
 const animControl = (method, i = 0) => {
