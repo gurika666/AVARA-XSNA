@@ -41,28 +41,17 @@ export class SimpleRiveOverlay {
       src: src,
       canvas: this.canvas,
       autoplay: autoplay,
-      stateMachines: 'State Machine 1', // Default state machine
+      stateMachines: 'State Machine 1', // Default state machine   
       onLoad: () => {
-        
+               this.rive.resizeDrawingSurfaceToCanvas();
+                
+               
+                
 
 
-        this.rive.resizeDrawingSurfaceToCanvas();
-        
-        // Get state machine inputs
-        const stateMachine = this.rive.stateMachineInputs('State Machine 1');
-        
-        // Find the progress input
-        this.progressInput = stateMachine.find(input => input.name === 'progress');
-        this.isScrubInput = stateMachine.find(input => input.name === 'isScrubbing');
-        
-        // console.log('Found progress input:', this.progressInput);
-        // console.log('Found isScrubbing input:', this.isScrubInput);
-
-      
-
-        
       },
       onStateChange: (state) => {
+        
         if (state.data == 'playbutton_click') {
           console.log("Play button clicked");
           // Trigger play/pause callback
@@ -76,7 +65,7 @@ export class SimpleRiveOverlay {
       }
     });
 
-     console.log(this.rive)
+    
 
     this.rive.on(EventType.RiveEvent, this.onRiveEventReceived.bind(this));
 
@@ -84,7 +73,9 @@ export class SimpleRiveOverlay {
 
     
   }
- 
+
+
+
 
   // Add this method to update progress from audio
   setProgress(progressPercent) {
