@@ -15,7 +15,7 @@ export class SimpleRiveOverlay {
       height = 400,
       position = { x: 50, y: 50 },
       autoplay = true,
-      onPlayPause = null 
+      onPlayPause = null
     } = config;
 
     this.playPauseCallback = onPlayPause;
@@ -36,7 +36,6 @@ export class SimpleRiveOverlay {
     
     document.body.appendChild(this.canvas);
 
-
     // Create Rive instance
     this.rive = new Rive({
       src: src,
@@ -44,56 +43,68 @@ export class SimpleRiveOverlay {
       autoplay: autoplay,
       stateMachines: 'State Machine 1', // Default state machine
       onLoad: () => {
-        console.log('Rive animation loaded');
-        this.rive.resizeDrawingSurfaceToCanvas();
-      },
-       onStateChange: (state) => {
         
-        // console.log("state changed", state);
 
 
+        this.rive.resizeDrawingSurfaceToCanvas();
+        
+        // Get state machine inputs
+        const stateMachine = this.rive.stateMachineInputs('State Machine 1');
+        
+        // Find the progress input
+        this.progressInput = stateMachine.find(input => input.name === 'progress');
+        this.isScrubInput = stateMachine.find(input => input.name === 'isScrubbing');
+        
+        // console.log('Found progress input:', this.progressInput);
+        // console.log('Found isScrubbing input:', this.isScrubInput);
+
+      
+
+        
+      },
+      onStateChange: (state) => {
         if (state.data == 'playbutton_click') {
-
-            console.log("Play button clicked");
-
-              // Trigger play/pause callback
+          console.log("Play button clicked");
+          // Trigger play/pause callback
           if (this.playPauseCallback) {
             this.playPauseCallback();
           }
         }
-       
-    },
+      },
       onLoadError: (error) => {
-        
         console.error('Failed to load Rive animation:', error);
       }
-      
     });
+
+     console.log(this.rive)
 
     this.rive.on(EventType.RiveEvent, this.onRiveEventReceived.bind(this));
 
     return this.rive;
+
+    
+  }
+ 
+
+  // Add this method to update progress from audio
+  setProgress(progressPercent) {
+    if (this.progressInput) {
+      this.progressInput.value = progressPercent;
+    }
   }
 
   onRiveEventReceived(riveEvent) {
     const eventData = riveEvent.data;
     const eventProperties = eventData.properties;
     if (eventData.type === RiveEventType.General) {
-    //   console.log("Event name", eventData.name);
-
       if(eventData.name === "play"){
         // console.log("Playing animation");
-        
-        }
+      }
     } else if (eventData.type === RiveEventType.OpenUrl) {
       console.log("Event name", eventData.name);
       window.open(eventData.url);
     }
   }
-
-
-   
-
 
   dispose() {
     if (this.rive) {

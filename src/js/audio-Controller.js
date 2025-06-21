@@ -42,7 +42,7 @@ export function loadAudio(audioPath) {
       .then(buffer => {
         audioBuffer = buffer;
         isAudioLoaded = true;
-        console.log('Audio loaded, duration:', buffer.duration);
+        // console.log('Audio loaded, duration:', buffer.duration);
         resolve();
       })
       .catch(error => {
@@ -90,7 +90,7 @@ export function startAudio() {
   // Handle end of playback
   sourceNode.onended = () => {
     if (isPlaying && getCurrentTime() >= audioBuffer.duration - 0.1) {
-      console.log("Audio ended naturally");
+      // console.log("Audio ended naturally");
       isPlaying = false;
       pauseTime = 0;
       startTime = 0;
@@ -103,7 +103,7 @@ export function startAudio() {
   startTime = audioContext.currentTime - offset;
   isPlaying = true;
   
-  console.log("Audio started from:", offset);
+  // console.log("Audio started from:", offset);
 }
 
 // Pause audio playback
@@ -119,7 +119,7 @@ export function pauseAudio() {
   sourceNode = null;
   isPlaying = false;
   
-  console.log("Audio paused at:", pauseTime);
+  // console.log("Audio paused at:", pauseTime);
 }
 
 // Toggle play/pause
@@ -165,7 +165,7 @@ export function isCurrentlyPlaying() {
 // Set volume (0-1)
 export function setVolume(value) {
   // You can implement a GainNode if volume control is needed
-  console.log("Volume control not implemented in this version");
+  // console.log("Volume control not implemented in this version");
 }
 
 // Reset audio to beginning

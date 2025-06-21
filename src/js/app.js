@@ -157,7 +157,7 @@ async function init() {
 
 function onProgress(itemUrl, itemsLoaded, itemsTotal) {
   const progress = (itemsLoaded / itemsTotal) * 100;
-  console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
+  // console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
 }
 
 function setupEventListeners() {
@@ -227,7 +227,7 @@ async function loadAllResources() {
 
   try {
     await loadAudio('audio/xsna.mp3');
-    console.log('✓ Audio loaded successfully');
+    // console.log('✓ Audio loaded successfully');
   } catch (error) {
     console.error('Failed to load audio:', error);
     // Decide if you want to continue without audio or throw error
@@ -242,7 +242,7 @@ async function loadAllResources() {
       loadHDRTexture('images/txt.hdr', 'txthdr', manager),
       loadHDRTexture('images/01.hdr', 'hdri', manager)
     ]);
-    console.log('✓ HDR textures loaded successfully');
+    // console.log('✓ HDR textures loaded successfully');
   } catch (error) {
     console.error('Failed to load HDR textures:', error);
     throw error;
@@ -467,7 +467,7 @@ async function loadTitleGLB(path, manager) {
         }
         
         resources.titleGlb = titleModel;
-        console.log('Title GLB loaded successfully');
+        // console.log('Title GLB loaded successfully');
         resolve();
       },
       undefined,
@@ -871,10 +871,17 @@ function animate(time) {
 
   const audioTime = AudioController.getCurrentTime();
 
-   AudioController.update(deltaTime);
+  AudioController.update(deltaTime);
+   
   
   // Update title position based on audio time
   updateTitlePosition(audioTime);
+
+
+   if (riveOverlay && riveOverlay.progressInput && AudioController.getAudioDuration() > 0) {
+    const progressPercent = (audioTime / AudioController.getAudioDuration()) * 100;
+    riveOverlay.setProgress(progressPercent);
+  }
 
     // Update text manager
   if (textManager) {
