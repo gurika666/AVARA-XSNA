@@ -18,6 +18,7 @@ import { DepthDrivenBlurPass } from './custom-dof.js';
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
 import { TextManager } from './TextManager.js';
 import { SimpleRiveOverlay } from './rive-overlay.js';
+import { Rive, EventType, RiveEventType, Layout,  Fit, Alignment } from '@rive-app/canvas'
 
 
 
@@ -25,6 +26,8 @@ import { SimpleRiveOverlay } from './rive-overlay.js';
 
 let depthBlurPass;
 let riveOverlay;
+let rive;
+let widthNumInput;
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass, textManager;
@@ -36,6 +39,8 @@ let cursorPlane = new CursorPlane();
 let titleModel = null;
 let titleMixer;
 let textmaterial;
+const canvas = document.querySelector('.main-animation');
+const rivecanvas = document.querySelector('.rive');
 
 const LAYERS = {
   DOFIGNORE: 2,
@@ -121,10 +126,9 @@ const resources = {
 
 async function init() {
   // Setup renderer first
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvas  });
   renderer.outputEncoding = THREE.sRGBEncoding
   renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
   
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
@@ -532,23 +536,60 @@ function onProgress(itemUrl, itemsLoaded, itemsTotal) {
 }
 
 async function loadRiveOverlay() {
-  try {
-    riveOverlay = new SimpleRiveOverlay();
-    
-    await riveOverlay.load({
-      onPlayPause: () => {
-        // Toggle both audio and animation together
-        if (isAnimating) {
-          pauseAnimation();
-        } else {
-          startAnimation();
+
+
+   rive = new Rive({
+        src: 'animations/test.riv', // Ensure this file name is correct
+        canvas: rivecanvas,
+        autoplay: true,
+        stateMachines: 'State Machine 1', // Ensure this state machine name is correct
+        layout: new Layout({
+        
+          fit: Fit.contain,
+        }),
+        onLoad: () => {
+
+            rive.resizeDrawingSurfaceToCanvas();
+            const inputs = rive.stateMachineInputs('State Machine 1');
+            console.log('All state machine inputs:', inputs);
+
+      
+          
+          widthNumInput = inputs.find(i => i.name === 'width_num');
+          
+          if (widthNumInput) {
+
+              widthNumInput.value = window.innerWidth;
+
+             console.log('Initial width set to:', window.innerWidth);
+            
+          }
+          
+       
+        },
+        onStateChange: (state) => {
+        
+        // console.log("state changed", state);
+
+
+        if (state.data == 'playbutton_click') {
+
+            console.log("Play button clicked");
+
+              // Trigger play/pause callback
+          if (this.playPauseCallback) {
+
+            this.playPauseCallback();
+          }
         }
-      }
-    });
+       
+    },
+
     
-  } catch (error) {
-    console.error('Failed to load Rive overlay:', error);
-  }
+  });
+
+  
+
 }
 
 
@@ -860,6 +901,17 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer?.setSize(window.innerWidth, window.innerHeight);
   // displacementScenePass?.setSize(window.innerWidth, window.innerHeight);
+
+if (rive) {
+    rive.resizeDrawingSurfaceToCanvas();
+    
+    // Update the width input to match new window width
+    if (widthNumInput) {
+      widthNumInput.value = window.innerWidth;
+      console.log('Updated Rive width input to:', widthNumInput.value);
+    }
+  }
+
 }
 
 function animate(time) {
@@ -1092,7 +1144,10 @@ export const playAllGLBAnimations = () => gltfAnimationActions.forEach((_, i) =>
 export const pauseAllGLBAnimations = () => gltfAnimationActions.forEach((_, i) => pauseGLBAnimation(i));
 export const stopAllGLBAnimations = () => gltfAnimationActions.forEach((_, i) => stopGLBAnimation(i));
 
+
+setTimeout(() => {
+  init();
+}, 1000);
 // Initialize
-init();
 
 export { scene, gltfModel, gltfMixer, gltfAnimationActions };

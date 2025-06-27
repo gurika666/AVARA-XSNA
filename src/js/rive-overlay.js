@@ -1,19 +1,19 @@
 // simple-rive-overlay.js
-import { Rive, EventType, RiveEventType } from '@rive-app/canvas'
+import { Rive, EventType, RiveEventType, Layout,  Fit, Alignment } from '@rive-app/canvas'
 
 export class SimpleRiveOverlay {
   constructor() {
     this.rive = null;
     this.canvas = null;
-    this.playPauseCallback = null;
+    // this.playPauseCallback = null;
   }
 
   async load(config = {}) {
     const {
       src = 'animations/test.riv',
-      width = 400,
-      height = 400,
-      position = { x: 50, y: 50 },
+    //   width = 400,
+    //   height = 400,
+    //   position = { x: 150, y: 50 },
       autoplay = true,
       onPlayPause = null 
     } = config;
@@ -21,32 +21,46 @@ export class SimpleRiveOverlay {
     this.playPauseCallback = onPlayPause;
 
     // Create canvas
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = width;
-    this.canvas.height = height;
-    this.canvas.style.cssText = `
-      position: fixed;
-      left: ${position.x}%;
-      top: ${position.y}%;
-      transform: translate(-50%, -50%);
-      pointer-events: auto;
-      z-index: 100;
-      cursor: pointer;
-    `;
+    this.canvas = document.querySelector('.rive');
+    // this.canvas.width = width;
+    // this.canvas.height = height;
+    // this.canvas.style.cssText = `
+    //   position: fixed;
+    //   left: ${position.x}%;
+    //   top: ${position.y}%;
+    //   transform: translate(-50%, -50%);
+    //   pointer-events: auto;
+    //   z-index: 100;
+    //   cursor: pointer;
+    // `;
     
-    document.body.appendChild(this.canvas);
+// document.body.appendChild(this.canvas);
+
+    window.addEventListener('resize', () => {
+
+  this.rive.resizeDrawingSurfaceToCanvas();
+
+    });
 
 
     // Create Rive instance
     this.rive = new Rive({
-      src: src,
-      canvas: this.canvas,
+      src: 'animations/test.riv',
+      canvas: document.getElementById('riveCanvas'), // Ensure this matches your canvas ID
       autoplay: autoplay,
       stateMachines: 'State Machine 1', // Default state machine
+      layout: new Layout({
+        // fit: Fit.Contain,      
+        // alignment: Alignment.Center,
+      }),
+     
+
       onLoad: () => {
+
         console.log('Rive animation loaded');
         this.rive.resizeDrawingSurfaceToCanvas();
-      },
+      
+      },    
        onStateChange: (state) => {
         
         // console.log("state changed", state);
@@ -58,6 +72,7 @@ export class SimpleRiveOverlay {
 
               // Trigger play/pause callback
           if (this.playPauseCallback) {
+
             this.playPauseCallback();
           }
         }
@@ -70,26 +85,17 @@ export class SimpleRiveOverlay {
       
     });
 
-    this.rive.on(EventType.RiveEvent, this.onRiveEventReceived.bind(this));
+    // this.rive.on(EventType.RiveEvent, this.onRiveEventReceived.bind(this));
 
     return this.rive;
   }
 
-  onRiveEventReceived(riveEvent) {
-    const eventData = riveEvent.data;
-    const eventProperties = eventData.properties;
-    if (eventData.type === RiveEventType.General) {
-    //   console.log("Event name", eventData.name);
 
-      if(eventData.name === "play"){
-        // console.log("Playing animation");
-        
-        }
-    } else if (eventData.type === RiveEventType.OpenUrl) {
-      console.log("Event name", eventData.name);
-      window.open(eventData.url);
-    }
-  }
+  
+
+
+ 
+
 
 
    
