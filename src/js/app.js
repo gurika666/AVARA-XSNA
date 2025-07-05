@@ -17,8 +17,8 @@ import * as LoadingManager from './loading-manager.js';
 import { DepthDrivenBlurPass } from './custom-dof.js';
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
 import { TextManager } from './TextManager.js';
-import { SimpleRiveOverlay } from './rive-overlay.js';
-import { Rive, EventType, RiveEventType, Layout,  Fit, Alignment } from '@rive-app/canvas'
+import { Rive, EventType, RiveEventType, Layout,  Fit, Alignment } from '@rive-app/webgl2'
+
 
 
 
@@ -28,6 +28,7 @@ let depthBlurPass;
 let riveOverlay;
 let rive;
 let widthNumInput;
+let stoppedInput;
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass, textManager;
@@ -536,7 +537,7 @@ function onProgress(itemUrl, itemsLoaded, itemsTotal) {
 }
 
 async function loadRiveOverlay() {
-
+  
 
    rive = new Rive({
         src: 'animations/test.riv', // Ensure this file name is correct
@@ -552,6 +553,9 @@ async function loadRiveOverlay() {
             rive.resizeDrawingSurfaceToCanvas();
             const inputs = rive.stateMachineInputs('State Machine 1');
             console.log('All state machine inputs:', inputs);
+        // checkRiveRenderer();
+         const gl = rivecanvas.getContext('webgl2') || rivecanvas.getContext('webgl');
+         console.log('WebGL context:', gl);
 
       
           
@@ -564,9 +568,22 @@ async function loadRiveOverlay() {
              console.log('Initial width set to:', window.innerWidth);
             
           }
+
+          stoppedInput = inputs.find(i => i.name === 'stopped');
+
+
+         
+            if (stoppedInput) {
+              stoppedInput.value = isAnimating; // Set initial state based on animation state
+
+              console.log('Initial stopped state set to:', stoppedInput.value);
+            } else {
+              console.warn('Stopped input not found in Rive state machine');
+            }
+    },
           
        
-        },
+        
         onStateChange: (state) => {
         
         // console.log("state changed", state);
@@ -676,6 +693,7 @@ function completeSetup() {
   isSetupComplete = true;
 
  
+
 }
 
 function setupHeadTracking() {
@@ -1114,6 +1132,10 @@ function startAnimation() {
   AudioController.startAudio();
   lastTime = null;
   isAnimating = true;
+   if (stoppedInput) {
+    stoppedInput.value = false;
+    console.log('Rive stopped state set to false (playing)');
+  }
   animate(performance.now());
 }
 
@@ -1126,6 +1148,10 @@ function pauseAnimation() {
   }
   isAnimating = false;
   GUI.updatePlaybackState(false);
+   if (stoppedInput) {
+    stoppedInput.value = true;
+    console.log('Rive stopped state set to true (paused)');
+  }
 }
 
 // GLB Animation Controls
