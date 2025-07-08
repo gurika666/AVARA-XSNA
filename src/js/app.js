@@ -576,7 +576,7 @@ async function loadRiveOverlay() {
             if (stoppedInput) {
               stoppedInput.value = isAnimating; // Set initial state based on animation state
 
-              console.log('Initial stopped state set to:', stoppedInput.value);
+              // console.log('Initial stopped state set to:', stoppedInput.value);
             } else {
               console.warn('Stopped input not found in Rive state machine');
             }
@@ -1134,7 +1134,7 @@ function startAnimation() {
   isAnimating = true;
    if (stoppedInput) {
     stoppedInput.value = false;
-    console.log('Rive stopped state set to false (playing)');
+    // console.log('Rive stopped state set to false (playing)');
   }
   animate(performance.now());
 }
@@ -1150,7 +1150,7 @@ function pauseAnimation() {
   GUI.updatePlaybackState(false);
    if (stoppedInput) {
     stoppedInput.value = true;
-    console.log('Rive stopped state set to true (paused)');
+    // console.log('Rive stopped state set to true (paused)');
   }
 }
 

@@ -103,7 +103,7 @@ export function startAudio() {
   startTime = audioContext.currentTime - offset;
   isPlaying = true;
   
-  console.log("Audio started from:", offset);
+  // console.log("Audio started from:", offset);
 }
 
 // Pause audio playback
@@ -119,7 +119,7 @@ export function pauseAudio() {
   sourceNode = null;
   isPlaying = false;
   
-  console.log("Audio paused at:", pauseTime);
+  // console.log("Audio paused at:", pauseTime);
 }
 
 // Toggle play/pause
