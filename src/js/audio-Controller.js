@@ -42,7 +42,7 @@ export function loadAudio(audioPath) {
       .then(buffer => {
         audioBuffer = buffer;
         isAudioLoaded = true;
-        console.log('Audio loaded, duration:', buffer.duration);
+        // console.log('Audio loaded, duration:', buffer.duration);
         resolve();
       })
       .catch(error => {
@@ -90,7 +90,7 @@ export function startAudio() {
   // Handle end of playback
   sourceNode.onended = () => {
     if (isPlaying && getCurrentTime() >= audioBuffer.duration - 0.1) {
-      console.log("Audio ended naturally");
+      // console.log("Audio ended naturally");
       isPlaying = false;
       pauseTime = 0;
       startTime = 0;

@@ -29,6 +29,10 @@ let riveOverlay;
 let rive;
 let widthNumInput;
 let stoppedInput;
+let loadedInput;
+let loadingProgress; 
+let currentProgress = 0;
+let progressInterval = null; 
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass, textManager;
@@ -126,6 +130,9 @@ const resources = {
 
 
 async function init() {
+
+  loadRiveOverlay();
+
   // Setup renderer first
   renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvas  });
   renderer.outputEncoding = THREE.sRGBEncoding
@@ -142,9 +149,10 @@ async function init() {
 
   
 GUI.setupUI(); // No parameters needed anymore
-  GUI.showLoadingScreen();
+  // GUI.showLoadingScreen();
   
   // Initialize controllers
+
   AudioController.init({ 
   onTimeUpdate: (t, dt) => textManager?.update(t, dt, textAppearTimes),
   onScrubComplete: t => textManager?.reset(t, textAppearTimes)
@@ -163,7 +171,7 @@ GUI.setupUI(); // No parameters needed anymore
   }
 }
 
-// Setup event listeners
+
 function setupEventListeners() {
   // Window resize
   window.addEventListener('resize', onWindowResize);
@@ -197,14 +205,14 @@ function setupEventListeners() {
 
     if (e.key === 'd' && depthBlurPass) {
     depthBlurPass.toggleDebugDepth();
-    console.log('Depth visualization toggled');
+    // console.log('Depth visualization toggled');
   }
   
   // Add number keys to adjust blur amount
   if (e.key >= '1' && e.key <= '9' && depthBlurPass) {
     const blurAmount = parseInt(e.key);
     depthBlurPass.setMaxBlurSize(blurAmount);
-    console.log('Max blur size set to:', blurAmount);
+    // console.log('Max blur size set to:', blurAmount);
   }
 
   });
@@ -213,73 +221,130 @@ function setupEventListeners() {
   GUI.setupScrubber(AudioController.handleScrubberInput, AudioController.handleScrubberChange);
 }
 
-async function loadAllResources() {
+// Simple function to animate progress value
+function animateProgressTo(targetValue) {
+  // Clear any existing animation
+  if (progressInterval) {
+    clearInterval(progressInterval);
+  }
+  
+  // Calculate step size based on distance
+  const distance = Math.abs(targetValue - currentProgress);
+  const duration = 500; // 500ms for any animation
+  const steps = 30; // 30 steps for smooth animation
+  const stepSize = distance / steps;
+  const stepDelay = duration / steps;
+  
+  let stepCount = 0;
+  
+  progressInterval = setInterval(() => {
+    stepCount++;
+    
+    if (stepCount >= steps || Math.abs(targetValue - currentProgress) < 0.5) {
+      // We're done, set final value
+      currentProgress = targetValue;
+      if (loadingProgress) {
+        loadingProgress.value = targetValue;
+      }
+      clearInterval(progressInterval);
+      progressInterval = null;
+    } else {
+      // Move towards target
+      if (currentProgress < targetValue) {
+        currentProgress += stepSize;
+      } else {
+        currentProgress -= stepSize;
+      }
+      
+      if (loadingProgress) {
+        loadingProgress.value = currentProgress;
+      }
+    }
+  }, stepDelay);
+}
 
+async function loadAllResources() {
   let allResourcesLoaded = false;
+  let totalSteps = 6; // Your existing value
+  let currentStep = 0;
+  
+  const updateProgress = () => {
+    currentStep++;
+    const progress = (currentStep / totalSteps) * 100;
+    
+    // Use smooth animation instead of direct assignment
+    animateProgressTo(progress);
+    
+    GUI.updateLoadingProgress('overall', progress);
+  };
   
   const manager = LoadingManager.create(
-    onProgress, 
+    (itemUrl, itemsLoaded, itemsTotal) => {
+      const itemProgress = (itemsLoaded / itemsTotal) * 100;
+      const overallProgress = ((currentStep + (itemProgress / 100)) / totalSteps) * 100;
+      
+      // Smooth animation for granular updates
+      animateProgressTo(overallProgress);
+      
+      GUI.updateLoadingProgress('overall', overallProgress);
+    },
     () => {
       allResourcesLoaded = true;
+      // Animate to 100%
+      animateProgressTo(100);
     },
     (url) => {
       console.error('Failed to load:', url);
     }
   );
   
-  // PHASE 1: Load Audio First (Critical for timing)
-  // console.log('Loading audio...');
-
+  // Initialize at 0
+  currentProgress = 0;
+  if (loadingProgress) {
+    loadingProgress.value = 0;
+  }
+  
+  // Your existing loading phases...
   try {
+    // Show some initial progress
+    animateProgressTo(5);
     await loadAudio('audio/xsna.mp3');
-    console.log('✓ Audio loaded successfully');
+    updateProgress();
   } catch (error) {
     console.error('Failed to load audio:', error);
-    // Decide if you want to continue without audio or throw error
     throw error;
   }
   
-  // PHASE 2: Load HDR textures (Critical for materials)
-  // console.log('Loading HDR environment textures...');
- 
+  // Rest of your loading code remains the same...
   try {
     await Promise.all([
       loadHDRTexture('images/txt.hdr', 'txthdr', manager),
       loadHDRTexture('images/01.hdr', 'hdri', manager)
     ]);
-    console.log('✓ HDR textures loaded successfully');
+    updateProgress();
   } catch (error) {
     console.error('Failed to load HDR textures:', error);
     throw error;
   }
   
-  // PHASE 3: Load everything else in parallel
-  // console.log('Loading models, textures, and vegetation...');
-
+  // Continue with remaining tasks...
   const remainingTasks = [
-    // Load displacement texture
     loadTexture('images/displacement-map.png', 'displacement', manager),
-    
-    // Load font
     loadFont('fonts/Monarch_Regular.json', manager),
-    
-    // Load GLB models (they can now use the loaded HDR textures)
     loadGLB(config.glb.path, manager),
     loadTitleGLB(config.titleGlb.path, manager),
-    
-    // Initialize vegetation
     initVegetation(manager)
   ];
   
   try {
     await Promise.all(remainingTasks);
-    // console.log('✓ All models and textures loaded successfully');
+    updateProgress();
   } catch (error) {
     console.error('Failed to load remaining resources:', error);
     throw error;
   }
   
-  // Wait for manager to report completion
+  // Wait for completion
   if (!allResourcesLoaded) {
     await new Promise(resolve => {
       const checkInterval = setInterval(() => {
@@ -296,7 +361,11 @@ async function loadAllResources() {
     });
   }
   
-  // console.log('✅ All resources fully loaded');
+  // Final animation to 100%
+  animateProgressTo(100);
+  
+  // Wait a bit for animation to complete
+  await new Promise(resolve => setTimeout(resolve, 600));
 }
 
 // Loading functions
@@ -473,7 +542,7 @@ async function loadTitleGLB(path, manager) {
         }
         
         resources.titleGlb = titleModel;
-        console.log('Title GLB loaded successfully');
+        // console.log('Title GLB loaded successfully');
         resolve();
       },
       undefined,
@@ -532,7 +601,7 @@ async function initVegetation(manager) {
 
 function onProgress(itemUrl, itemsLoaded, itemsTotal) {
   const progress = (itemsLoaded / itemsTotal) * 100;
-  GUI.updateLoadingProgress('overall', progress);
+  // GUI.updateLoadingProgress('overall', progress);
   // console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
 }
 
@@ -543,6 +612,8 @@ async function loadRiveOverlay() {
         src: 'animations/test.riv', // Ensure this file name is correct
         canvas: rivecanvas,
         autoplay: true,
+        autoBind: true,
+        artboard: 'Artboard', // Ensure this artboard name is correct
         stateMachines: 'State Machine 1', // Ensure this state machine name is correct
         layout: new Layout({
         
@@ -552,67 +623,83 @@ async function loadRiveOverlay() {
 
             rive.resizeDrawingSurfaceToCanvas();
             const inputs = rive.stateMachineInputs('State Machine 1');
-            console.log('All state machine inputs:', inputs);
-        // checkRiveRenderer();
-         const gl = rivecanvas.getContext('webgl2') || rivecanvas.getContext('webgl');
-         console.log('WebGL context:', gl);
+            const gl = rivecanvas.getContext('webgl2') || rivecanvas.getContext('webgl');
+
+            const viewmodel = rive.viewModelInstance;
+            loadingProgress = viewmodel.number('loadprogress');
+            
+
+            
+            console.log(loadingProgress);
 
       
           
           widthNumInput = inputs.find(i => i.name === 'width_num');
+          stoppedInput = inputs.find(i => i.name === 'stopped');
+          loadedInput = inputs.find(i => i.name === 'Loaded');
+
           
           if (widthNumInput) {
 
               widthNumInput.value = window.innerWidth;
-
-             console.log('Initial width set to:', window.innerWidth);
             
           }
-
-          stoppedInput = inputs.find(i => i.name === 'stopped');
-
-
-         
-            if (stoppedInput) {
+          if (stoppedInput) {
               stoppedInput.value = isAnimating; // Set initial state based on animation state
 
               // console.log('Initial stopped state set to:', stoppedInput.value);
-            } else {
+           } else {
               console.warn('Stopped input not found in Rive state machine');
-            }
+          }
+          if (loadedInput) {
+              loadedInput.value = false; // Ensure it starts as false
+              // console.log('Initial loaded state set to false');
+            } else {
+              console.warn('Loaded input not found in Rive state machine');
+        }
+
+        
+        // progressInput = inputs.find(i => i.name === 'progress' || i.name === 'Progress');
+        // if (progressInput) {
+        //   progressInput.value = 0;
+        //   console.log('Progress input found and set to 0');
+        
     },
           
        
         
-        onStateChange: (state) => {
-        
+         onStateChange: (state) => {
         // console.log("state changed", state);
-
-
+        
         if (state.data == 'playbutton_click') {
-
-            console.log("Play button clicked");
-
-              // Trigger play/pause callback
-          if (this.playPauseCallback) {
-
-            this.playPauseCallback();
+          console.log("Play button clicked");
+          
+          // Only allow play/pause if fully loaded
+          if (isSetupComplete && loadedInput && loadedInput.value) {
+            if (isAnimating) {
+              pauseAnimation();
+            } else {
+              startAnimation();
+            }
+          } else {
+            console.log("Cannot play/pause - scene not fully loaded yet");
           }
         }
-       
-    },
-
-    
-  });
+      },
+    });
 
   
 
 }
 
 
-function completeSetup() {
+async function completeSetup() {
   if (isSetupComplete) return;
   
+
+   console.log('Holding at 100% for 2 seconds...');
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
   // Create camera
   camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 2, 0);
@@ -646,7 +733,7 @@ function completeSetup() {
   const light = new THREE.AmbientLight(0xffffff, 0.001);
   // scene.add(light);
  
-    loadRiveOverlay();
+
 
   // Initialize cursor plane
  
@@ -692,8 +779,10 @@ function completeSetup() {
   
   isSetupComplete = true;
 
- 
-
+   if (loadedInput) {
+    loadedInput.value = true;
+    console.log('✅ Scene fully loaded - Rive Loaded set to true');
+  }
 }
 
 function setupHeadTracking() {

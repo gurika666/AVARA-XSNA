@@ -1,12 +1,11 @@
-// gui.js - Simplified GUI with only scrubber and loading screen
+// gui.js - Modified to remove HTML loading screen
 
 export let scrubber, scrubberTimeDisplay, durationDisplay, infoDiv;
-export let loadingScreen, loadingProgress, loadingText, loadingDetails;
+// Remove loading screen variables
 
 // Setup minimal UI with just scrubber
 export function setupUI() {
-  // Create loading screen
-  createLoadingScreen();
+  // Don't create loading screen anymore
   
   // Create scrubber container (hidden initially)
   const scrubberContainer = document.createElement('div');
@@ -125,88 +124,32 @@ export function setupUI() {
   document.body.style.overflow = 'hidden';
 }
 
-// Create loading screen
-function createLoadingScreen() {
-  loadingScreen = document.createElement('div');
-  loadingScreen.style.position = 'fixed';
-  loadingScreen.style.top = '0';
-  loadingScreen.style.left = '0';
-  loadingScreen.style.width = '100%';
-  loadingScreen.style.height = '100%';
-  loadingScreen.style.backgroundColor = '#000';
-  loadingScreen.style.display = 'flex';
-  loadingScreen.style.flexDirection = 'column';
-  loadingScreen.style.justifyContent = 'center';
-  loadingScreen.style.alignItems = 'center';
-  loadingScreen.style.zIndex = '1000';
-  
-  const loadingContainer = document.createElement('div');
-  loadingContainer.style.textAlign = 'center';
-  
-  loadingText = document.createElement('div');
-  loadingText.textContent = 'Loading...';
-  loadingText.style.color = '#fff';
-  loadingText.style.fontSize = '24px';
-  loadingText.style.marginBottom = '20px';
-  loadingContainer.appendChild(loadingText);
-  
-  const progressContainer = document.createElement('div');
-  progressContainer.style.width = '200px';
-  progressContainer.style.height = '4px';
-  progressContainer.style.backgroundColor = '#333';
-  progressContainer.style.borderRadius = '2px';
-  progressContainer.style.overflow = 'hidden';
-  
-  loadingProgress = document.createElement('div');
-  loadingProgress.style.width = '0%';
-  loadingProgress.style.height = '100%';
-  loadingProgress.style.backgroundColor = '#fff';
-  loadingProgress.style.transition = 'width 0.3s ease-out';
-  progressContainer.appendChild(loadingProgress);
-  loadingContainer.appendChild(progressContainer);
-  
-  loadingDetails = document.createElement('div');
-  loadingDetails.style.color = '#666';
-  loadingDetails.style.fontSize = '14px';
-  loadingDetails.style.marginTop = '10px';
-  loadingContainer.appendChild(loadingDetails);
-  
-  loadingScreen.appendChild(loadingContainer);
-  document.body.appendChild(loadingScreen);
-}
-
-// Show/hide functions
+// Remove or stub out loading functions
 export function showLoadingScreen() {
-  if (loadingScreen) loadingScreen.style.display = 'flex';
+  // No longer needed - Rive handles loading
 }
 
 export function hideLoadingScreen() {
-  if (loadingScreen) {
-    loadingScreen.style.opacity = '0';
+  // Just fade in the controls
+  if (infoDiv) infoDiv.style.opacity = '1';
+  const scrubberContainer = document.getElementById('scrubber-container');
+  if (scrubberContainer) {
     setTimeout(() => {
-      loadingScreen.style.display = 'none';
-      // Fade in info and scrubber
-      if (infoDiv) infoDiv.style.opacity = '1';
-      const scrubberContainer = document.getElementById('scrubber-container');
-      if (scrubberContainer) scrubberContainer.style.opacity = '1';
-    }, 500);
+      scrubberContainer.style.opacity = '1';
+    }, 100);
   }
 }
 
-// Update loading progress
+// Keep for compatibility but it won't show anything
 export function updateLoadingProgress(type, progress) {
-  if (loadingProgress) {
-    loadingProgress.style.width = `${Math.min(100, Math.max(0, progress))}%`;
-  }
-  if (loadingDetails) {
-    loadingDetails.textContent = `${Math.floor(progress)}% complete`;
-  }
+  // Could log for debugging
+  // console.log(`Loading progress: ${type} - ${progress}%`);
 }
 
-// Show loading error
+// Keep for compatibility
 export function showLoadingError(message) {
-  if (loadingText) loadingText.textContent = 'Loading failed';
-  if (loadingDetails) loadingDetails.textContent = message;
+  console.error('Loading error:', message);
+  // You might want to trigger an error state in Rive here
 }
 
 // Setup scrubber callbacks
@@ -237,6 +180,9 @@ export function enableControls(duration, treeCount) {
   if (infoDiv) {
     infoDiv.innerHTML = `Trees: ${treeCount}`;
   }
+  
+  // Fade in controls
+  hideLoadingScreen();
 }
 
 // Update time display
