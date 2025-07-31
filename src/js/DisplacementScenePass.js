@@ -65,7 +65,7 @@ class DisplacementScenePass extends ShaderPass {
     this.renderer = renderer;
     
     // Create a separate scene for the displacement map
-    this.setupDisplacementScene();
+    // this.setupDisplacementScene();
     
     // Text-related properties
     this.font = null;

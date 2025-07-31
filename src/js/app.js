@@ -30,6 +30,7 @@ let rive;
 let widthNumInput;
 let stoppedInput;
 let loadedInput;
+let playButtonInput;
 let loadingProgress; 
 let currentProgress = 0;
 let progressInterval = null; 
@@ -221,7 +222,7 @@ function setupEventListeners() {
   GUI.setupScrubber(AudioController.handleScrubberInput, AudioController.handleScrubberChange);
 }
 
-// Simple function to animate progress value
+
 function animateProgressTo(targetValue) {
   // Clear any existing animation
   if (progressInterval) {
@@ -368,7 +369,6 @@ async function loadAllResources() {
   await new Promise(resolve => setTimeout(resolve, 600));
 }
 
-// Loading functions
 async function loadHDRTexture(path, key, manager) {
   return new Promise((resolve, reject) => {
     new RGBELoader(manager).load(
@@ -627,10 +627,18 @@ async function loadRiveOverlay() {
 
             const viewmodel = rive.viewModelInstance;
             loadingProgress = viewmodel.number('loadprogress');
+            playButtonInput = viewmodel.trigger('playbutton')
+
+            // playButtonInput.fire();
+
+            // playButtonInput.trigger()
+
+            console.log(viewmodel.properties);
+            
             
 
             
-            console.log(loadingProgress);
+            // console.log(loadingProgress);
 
       
           
@@ -962,7 +970,7 @@ bloomPass.renderTargetsVertical.forEach(target => {
   chromaticAberrationPass = new ChromaticAberrationPass(config.chromaticAberration.strength);
   chromaticAberrationPass.update(renderer, window.innerWidth, window.innerHeight);
  
-  // composer.addPass(displacementScenePass); // Uncomment if needed
+  composer.addPass(displacementScenePass); // Uncomment if needed
 
 
 
