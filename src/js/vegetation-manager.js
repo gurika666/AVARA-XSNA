@@ -1,3 +1,4 @@
+// vegetation-manager.js - Step 2: Object Pooling Implementation
 import * as THREE from "three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as GUI from './gui.js';
@@ -11,6 +12,119 @@ const TREE_CLEARANCE_FROM_CENTER = 7
 // State
 let grassPatches = [], trees = [], treeModels = [], resourcesLoaded = { trees: false, grass: false };
 let cloudTexture, gradientTexture;
+
+// SHARED MATERIALS - Create once, use everywhere
+let sharedGrassMaterial = null;
+let sharedTreeMaterials = new Map(); // Store tree materials by name
+
+// OBJECT POOLS
+const grassPool = {
+  available: [],
+  active: new Set(),
+  
+  // Get a grass patch from pool or create new one
+  get(size, count) {
+    // Try to find a matching grass patch in the pool
+    for (let i = 0; i < this.available.length; i++) {
+      const patch = this.available[i];
+      // Check if this patch matches our requirements (you could be more flexible here)
+      if (patch.userData.size === size && patch.userData.count === count) {
+        this.available.splice(i, 1);
+        this.active.add(patch);
+        patch.visible = true;
+        return patch;
+      }
+    }
+    
+    // No matching patch found, create a new one
+    const newPatch = new Grass(size, count);
+    newPatch.userData.size = size;
+    newPatch.userData.count = count;
+    this.active.add(newPatch);
+    return newPatch;
+  },
+  
+  // Return a grass patch to the pool
+  release(patch) {
+    patch.visible = false;
+    this.active.delete(patch);
+    this.available.push(patch);
+  },
+  
+  // Clean up all patches
+  dispose() {
+    [...this.available, ...this.active].forEach(patch => {
+      if (patch.geometry) patch.geometry.dispose();
+    });
+    this.available = [];
+    this.active.clear();
+  }
+};
+
+const treePool = {
+  available: [],
+  active: new Set(),
+  
+  // Get a tree from pool or create new one
+  get(modelIndex) {
+    // Try to find a matching tree in the pool
+    for (let i = 0; i < this.available.length; i++) {
+      const tree = this.available[i];
+      if (tree.userData.modelIndex === modelIndex) {
+        this.available.splice(i, 1);
+        this.active.add(tree);
+        tree.visible = true;
+        return tree;
+      }
+    }
+    
+    // No matching tree found, create a new one
+    let newTree;
+    
+    if (treeModels.length === 0) {
+      // Fallback box tree
+      const geometry = new THREE.BoxGeometry(2, 5, 2);
+      const material = sharedTreeMaterials.get('default') || new THREE.MeshPhysicalMaterial({ color: 0x228B22 });
+      newTree = new THREE.Mesh(geometry, material);
+      newTree.userData.modelIndex = -1; // Special index for box trees
+    } else {
+      // Clone from loaded models
+      const model = treeModels[modelIndex];
+      newTree = model.clone();
+      
+      // Apply shared materials
+      newTree.traverse(child => {
+        if (child.isMesh && child.material) {
+          const materialName = child.material.name || 'default';
+          if (sharedTreeMaterials.has(materialName)) {
+            child.material = sharedTreeMaterials.get(materialName);
+          }
+        }
+      });
+      
+      newTree.userData.modelIndex = modelIndex;
+    }
+    
+    this.active.add(newTree);
+    return newTree;
+  },
+  
+  // Return a tree to the pool
+  release(tree) {
+    tree.visible = false;
+    this.active.delete(tree);
+    this.available.push(tree);
+  },
+  
+  // Clean up all trees
+  dispose() {
+    [...this.available, ...this.active].forEach(tree => {
+      if (tree.geometry) tree.geometry.dispose();
+    });
+    this.available = [];
+    this.active.clear();
+  }
+};
 
 // Utilities
 const interpolate = (val, oldMin, oldMax, newMin, newMax) => ((val - oldMin) * (newMax - newMin)) / (oldMax - oldMin) + newMin;
@@ -87,45 +201,50 @@ class GrassGeometry extends THREE.BufferGeometry {
   }
 }
 
-// Grass Mesh
+// Grass Mesh - Uses shared material
 class Grass extends THREE.Mesh {
   constructor(size, count) {
     const geometry = new GrassGeometry(size, count);
-    const alphaTexture = gradientTexture || createGradientTexture();
-    const material = new THREE.MeshPhysicalMaterial({
-      map: alphaTexture, roughness: 0.8, metalness: 0,
-      side: THREE.DoubleSide, transparent: true, alphaMap: alphaTexture, alphaTest: 0.1
-    });
-    super(geometry, material);
+    super(geometry, sharedGrassMaterial);
   }
 }
 
-// Vegetation Management
+// Vegetation Management - MODIFIED TO USE POOLS
 function createGrassPatch(scene, x, z, size, count) {
-  const grassPatch = new Grass(size, count);
+  const grassPatch = grassPool.get(size, count);
   grassPatch.position.set(x, 0, z);
-  scene.add(grassPatch); grassPatches.push(grassPatch);
+  
+  // Only add to scene if not already in it
+  if (!grassPatch.parent) {
+    scene.add(grassPatch);
+  }
+  
+  grassPatches.push(grassPatch);
   return grassPatch;
 }
 
 function createTree(x, z) {
-  if (treeModels.length === 0) {
-    const geometry = new THREE.BoxGeometry(2, 5, 2);
-    const material = new THREE.MeshPhysicalMaterial({ color: 0x228B22 });
-    const box = new THREE.Mesh(geometry, material);
-    box.position.set(x, 2.5, z);
-    return box;
-  }
+  const modelIndex = treeModels.length > 0 ? Math.floor(Math.random() * treeModels.length) : -1;
+  const tree = treePool.get(modelIndex);
   
-  const tree = treeModels[Math.floor(Math.random() * treeModels.length)].clone();
-  tree.position.set(x, 0, z);
+  tree.position.set(x, modelIndex === -1 ? 2.5 : 0, z); // Box trees need Y offset
+  tree.rotation.y = 0; // All trees face the same direction
+  
   return tree;
 }
 
 function createInitialVegetation(scene) {
-  // Clear existing
-  [...grassPatches, ...trees].forEach(obj => scene.remove(obj));
-  grassPatches = []; trees = [];
+  // Clear existing - RETURN TO POOLS INSTEAD OF REMOVING
+  grassPatches.forEach(patch => {
+    grassPool.release(patch);
+    scene.remove(patch);
+  });
+  trees.forEach(tree => {
+    treePool.release(tree);
+    scene.remove(tree);
+  });
+  grassPatches = []; 
+  trees = [];
   
   // Create grass patches
   createGrassPatch(scene, 0, -40, MAX_PATCH_SIZE + 5, MAX_BLADE_COUNT + 200);
@@ -147,7 +266,10 @@ function createInitialVegetation(scene) {
       const x = (Math.random() * 2 - 1) * TREE_SPREAD;
       if (!trees.some(t => Math.pow(t.position.x - x, 2) + Math.pow(t.position.z - z, 2) < MIN_DISTANCE * MIN_DISTANCE)) {
         const tree = createTree(x, z);
-        scene.add(tree); trees.push(tree);
+        if (!tree.parent) {
+          scene.add(tree);
+        }
+        trees.push(tree);
       }
     }
   }
@@ -162,7 +284,6 @@ function createNewVegetation(scene, type) {
     const existing = type === 'grass' ? grassPatches : trees;
     const tooClose = existing.some(obj => Math.pow(obj.position.x - x, 2) + Math.pow(obj.position.z - z, 2) < MIN_DISTANCE * MIN_DISTANCE);
     
-    // For trees, check if they're too close to the camera path (x near 0)
     const tooCloseToCamera = type === 'tree' && Math.abs(x) < TREE_CLEARANCE_FROM_CENTER;
     
     if (!tooClose && !tooCloseToCamera) {
@@ -173,7 +294,10 @@ function createNewVegetation(scene, type) {
         createGrassPatch(scene, x, z, size, count);
       } else if (type === 'tree') {
         const tree = createTree(x, z);
-        scene.add(tree); trees.push(tree);
+        if (!tree.parent) {
+          scene.add(tree);
+        }
+        trees.push(tree);
       }
       return true;
     }
@@ -185,10 +309,27 @@ function createNewVegetation(scene, type) {
 export function init(scene, manager) {
   gradientTexture = createGradientTexture();
   
+  // CREATE SHARED GRASS MATERIAL ONCE
+  sharedGrassMaterial = new THREE.MeshPhysicalMaterial({
+    map: gradientTexture,
+    roughness: 0.8,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    transparent: true,
+    alphaMap: gradientTexture,
+    alphaTest: 0.1
+  });
+  
+  // Create default tree material
+  sharedTreeMaterials.set('default', new THREE.MeshPhysicalMaterial({ color: 0x228B22 }));
+  
   // Load cloud texture for grass
   const textureLoader = new THREE.TextureLoader(manager);
   textureLoader.load('images/cloud.jpg', 
-    texture => { cloudTexture = texture; resourcesLoaded.grass = true; },
+    texture => { 
+      cloudTexture = texture; 
+      resourcesLoaded.grass = true; 
+    },
     undefined,
     error => { cloudTexture = createDefaultTexture(); resourcesLoaded.grass = true; }
   );
@@ -198,7 +339,14 @@ export function init(scene, manager) {
   gltfLoader.load('mesh/trees_01.glb',
     gltf => {
       gltf.scene.traverse(child => {
-        if (child.isMesh && child.name.includes("Tree_")) treeModels.push(child);
+        if (child.isMesh && child.name.includes("Tree_")) {
+          treeModels.push(child);
+          
+          // CACHE TREE MATERIALS
+          if (child.material && !sharedTreeMaterials.has(child.material.name)) {
+            sharedTreeMaterials.set(child.material.name, child.material);
+          }
+        }
       });
       resourcesLoaded.trees = true;
       GUI.updateLoadingProgress('mesh', 100);
@@ -215,16 +363,27 @@ export function createInitialVegetationWhenReady(scene) {
 export function updateVegetation(scene, deltaZ = 0.5) {
   if (!Object.values(resourcesLoaded).every(Boolean)) return { grass: 0, trees: 0 };
   
-  // Move all vegetation
-  [...grassPatches, ...trees].forEach(obj => obj.position.z += deltaZ);
+  // Move all vegetation forward (towards camera)
+  [...grassPatches, ...trees].forEach(obj => {
+    obj.position.z += deltaZ;
+    // Rotation should NOT change here - only position
+    
+    // DEBUG: Check if tree rotations are changing
+    if (obj.userData.initialRotation !== undefined) {
+      const currentRotation = obj.rotation.y;
+      if (Math.abs(currentRotation - obj.userData.initialRotation) > 0.01) {
+        console.warn(`Tree rotation changed! Initial: ${obj.userData.initialRotation.toFixed(2)}, Current: ${currentRotation.toFixed(2)}`);
+      }
+    }
+  });
   
   // Remove and create new vegetation
   // Handle grass patches
   for (let i = grassPatches.length - 1; i >= 0; i--) {
     if (grassPatches[i].position.z > REMOVAL_Z) {
-      scene.remove(grassPatches[i]);
-      if (grassPatches[i].geometry) grassPatches[i].geometry.dispose();
-      if (grassPatches[i].material) grassPatches[i].material.dispose();
+      const patch = grassPatches[i];
+      scene.remove(patch);
+      grassPool.release(patch); // Return to pool instead of disposing
       grassPatches.splice(i, 1);
       createNewVegetation(scene, 'grass');
     }
@@ -233,9 +392,9 @@ export function updateVegetation(scene, deltaZ = 0.5) {
   // Handle trees
   for (let i = trees.length - 1; i >= 0; i--) {
     if (trees[i].position.z > REMOVAL_Z) {
-      scene.remove(trees[i]);
-      if (trees[i].geometry) trees[i].geometry.dispose();
-      if (trees[i].material) trees[i].material.dispose();
+      const tree = trees[i];
+      scene.remove(tree);
+      treePool.release(tree); // Return to pool instead of disposing
       trees.splice(i, 1);
       createNewVegetation(scene, 'tree');
     }
@@ -250,11 +409,23 @@ export const getAllTrees = () => trees;
 export const getAllGrassPatches = () => grassPatches;
 
 export function dispose() {
-  [...grassPatches, ...trees].forEach(obj => {
-    if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) obj.material.dispose();
-  });
-  grassPatches = []; trees = []; treeModels = [];
+  // Clean up pools
+  grassPool.dispose();
+  treePool.dispose();
+  
+  grassPatches = []; 
+  trees = []; 
+  treeModels = [];
+  
+  // Dispose shared materials
+  if (sharedGrassMaterial) {
+    sharedGrassMaterial.dispose();
+    sharedGrassMaterial = null;
+  }
+  
+  sharedTreeMaterials.forEach(material => material.dispose());
+  sharedTreeMaterials.clear();
+  
   if (cloudTexture) cloudTexture.dispose();
   if (gradientTexture) gradientTexture.dispose();
   resourcesLoaded = { trees: false, grass: false };

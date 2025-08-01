@@ -136,7 +136,10 @@ async function init() {
 
   // Setup renderer first
   renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvas  });
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
   renderer.outputEncoding = THREE.sRGBEncoding
+//  renderer.physicallyCorrectLights = true;
   renderer.setSize(window.innerWidth, window.innerHeight);
   
   scene = new THREE.Scene();
@@ -617,7 +620,7 @@ async function loadRiveOverlay() {
         stateMachines: 'State Machine 1', // Ensure this state machine name is correct
         layout: new Layout({
         
-          fit: Fit.contain,
+          fit: Fit.Layout,
         }),
         onLoad: () => {
 
