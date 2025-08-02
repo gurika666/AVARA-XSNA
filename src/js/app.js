@@ -28,12 +28,15 @@ let depthBlurPass;
 let riveOverlay;
 let rive;
 let widthNumInput;
+let width;
 let stoppedInput;
 let loadedInput;
 let playButtonInput;
 let loadingProgress; 
 let currentProgress = 0;
 let progressInterval = null; 
+let songprogress;
+
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass, textManager;
@@ -612,7 +615,7 @@ async function loadRiveOverlay() {
   
 
    rive = new Rive({
-        src: 'animations/test.riv', // Ensure this file name is correct
+        src: 'animations/resp_2.riv', // Ensure this file name is correct
         canvas: rivecanvas,
         autoplay: true,
         autoBind: true,
@@ -631,7 +634,9 @@ async function loadRiveOverlay() {
             const viewmodel = rive.viewModelInstance;
             loadingProgress = viewmodel.number('loadprogress');
             playButtonInput = viewmodel.trigger('playbutton')
-
+            width = viewmodel.number('width');
+            songprogress = viewmodel.number('songprogress');
+            
             // playButtonInput.fire();
 
             // playButtonInput.trigger()
@@ -645,14 +650,16 @@ async function loadRiveOverlay() {
 
       
           
-          widthNumInput = inputs.find(i => i.name === 'width_num');
+          // widthNumInput = inputs.find(i => i.name === 'width_num');
           stoppedInput = inputs.find(i => i.name === 'stopped');
           loadedInput = inputs.find(i => i.name === 'Loaded');
+          // widhtscruber = inputs.find(i => i.name === 'width_scrubber');
 
           
-          if (widthNumInput) {
+          if (width) {
 
-              widthNumInput.value = window.innerWidth;
+              // widthNumInput.value = window.innerWidth;
+              width.value = window.innerWidth; 
             
           }
           if (stoppedInput) {
@@ -1024,9 +1031,10 @@ if (rive) {
     rive.resizeDrawingSurfaceToCanvas();
     
     // Update the width input to match new window width
-    if (widthNumInput) {
-      widthNumInput.value = window.innerWidth;
-      console.log('Updated Rive width input to:', widthNumInput.value);
+    if (width) {
+      // widthNumInput.value = window.innerWidth;
+      width.value = window.innerWidth; 
+      // console.log('Updated Rive width input to:', widthNumInput.value);
     }
   }
 
@@ -1176,6 +1184,8 @@ function animate(time) {
   }
 
   updateHeadLookAt(camera, deltaTime);
+
+  
   
   // Camera animation based on audio time (rest of the code remains the same)
   const startPos = new THREE.Vector3(0, 2, 0);
