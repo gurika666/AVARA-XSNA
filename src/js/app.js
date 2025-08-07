@@ -36,6 +36,11 @@ let loadingProgress;
 let currentProgress = 0;
 let progressInterval = null; 
 let songprogress;
+let songprogressadd;
+let scrub;
+let isScrubbing = false;
+let isSeekingAudio = false;
+
 
 
 // Globals
@@ -635,20 +640,11 @@ async function loadRiveOverlay() {
             loadingProgress = viewmodel.number('loadprogress');
             playButtonInput = viewmodel.trigger('playbutton')
             width = viewmodel.number('width');
-            songprogress = viewmodel.number('songprogress');
-            
-            // playButtonInput.fire();
+            songprogressadd = viewmodel.number('progressnum');
+            scrub = viewmodel.boolean('scrub');
 
-            // playButtonInput.trigger()
 
-            console.log(viewmodel.properties);
-            
-            
 
-            
-            // console.log(loadingProgress);
-
-      
           
           // widthNumInput = inputs.find(i => i.name === 'width_num');
           stoppedInput = inputs.find(i => i.name === 'stopped');
@@ -677,38 +673,16 @@ async function loadRiveOverlay() {
         }
 
         
-        // progressInput = inputs.find(i => i.name === 'progress' || i.name === 'Progress');
-        // if (progressInput) {
-        //   progressInput.value = 0;
-        //   console.log('Progress input found and set to 0');
-        
-    },
-          
-       
-        
-         onStateChange: (state) => {
-        // console.log("state changed", state);
-        
-        if (state.data == 'playbutton_click') {
-          console.log("Play button clicked");
-          
-          // Only allow play/pause if fully loaded
-          if (isSetupComplete && loadedInput && loadedInput.value) {
-            if (isAnimating) {
-              pauseAnimation();
-            } else {
-              startAnimation();
-            }
-          } else {
-            console.log("Cannot play/pause - scene not fully loaded yet");
-          }
-        }
-      },
-    });
-
+      
   
+    }
+    });
+    
+
 
 }
+
+
 
 
 async function completeSetup() {
@@ -725,6 +699,10 @@ async function completeSetup() {
 
   if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
   
+  // if (songprogress) {
+  //   songprogress.value = 0;
+  // }
+
   // Setup composer and passes
   setupPostProcessing();
   
@@ -1051,7 +1029,43 @@ function animate(time) {
   titleMixer?.update(deltaTime);
 
   const audioTime = AudioController.getCurrentTime();
+
+// UPDATE RIVE PROGRESS
+if (songprogressadd && scrub) {
+  if (scrub.value && !isScrubbing) {
+    isScrubbing = true;
+    console.log('Started scrubbing');
+  } else if (!scrub.value && isScrubbing) {
+    isScrubbing = false;
+    const targetValue = songprogressadd.value;
+    
+    // Set seeking flag
+    isSeekingAudio = true;
+    
+    const duration = AudioController.getAudioDuration();
+    if (duration > 0) {
+      const seekTime = (targetValue / 100) * duration;
+      AudioController.seekTo(seekTime);
+    }
+    
+    // Clear seeking flag after a brief delay
+    setTimeout(() => {
+      isSeekingAudio = false;
+    }, 50);
+  }
   
+  // Only update progress when NOT scrubbing AND NOT seeking
+  if (!isScrubbing && !isSeekingAudio) {
+    const duration = AudioController.getAudioDuration();
+    if (duration > 0) {
+      const progress = (audioTime / duration) * 100;
+      songprogressadd.value = progress;
+    } else {
+      songprogressadd.value = 0;
+    }
+  }
+}
+
   // Update title position based on audio time
   updateTitlePosition(audioTime);
 

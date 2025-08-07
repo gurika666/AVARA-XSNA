@@ -168,6 +168,48 @@ export function setVolume(value) {
   console.log("Volume control not implemented in this version");
 }
 
+export function seekTo(time) {
+  const wasPlaying = isPlaying;
+  
+  // Stop current playback if playing
+  if (isPlaying && sourceNode) {
+    sourceNode.stop();
+    sourceNode.disconnect();
+    sourceNode = null;
+    isPlaying = false;
+  }
+  
+  // Set the pause time to the seek position IMMEDIATELY
+  pauseTime = Math.max(0, Math.min(time, audioBuffer?.duration || 0));
+  
+  // IMPORTANT: Update startTime immediately if we're going to resume
+  // This prevents getCurrentTime() from returning wrong values
+  if (wasPlaying) {
+    // Pre-calculate what startTime will be when we resume
+    startTime = audioContext.currentTime - pauseTime;
+  }
+  
+  // Resume playback if it was playing
+  if (wasPlaying) {
+    // Create new source
+    sourceNode = audioContext.createBufferSource();
+    sourceNode.buffer = audioBuffer;
+    sourceNode.connect(audioContext.destination);
+    
+    sourceNode.onended = () => {
+      if (isPlaying && getCurrentTime() >= audioBuffer.duration - 0.1) {
+        isPlaying = false;
+        pauseTime = 0;
+        startTime = 0;
+      }
+    };
+    
+    // Start from the seek position
+    sourceNode.start(0, pauseTime);
+    isPlaying = true;
+    // startTime is already set above
+  }
+}
 // Reset audio to beginning
 export function reset() {
   if (sourceNode && isPlaying) {
