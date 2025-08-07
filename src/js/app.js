@@ -10,7 +10,6 @@ import { DisplacementScenePass } from './DisplacementScenePass.js';
 import { ChromaticAberrationPass, CursorPlane, createSkyPlane, updateCloudUniforms } from './shader-manager.js';
 import {GammaCorrectionShader} from 'three/examples/jsm/shaders/GammaCorrectionShader'
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
-import * as GUI from './gui.js';
 import * as AudioController from './audio-controller.js';
 import * as VegetationManager from './vegetation-manager.js';
 import * as LoadingManager from './loading-manager.js';
@@ -19,36 +18,26 @@ import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.j
 import { TextManager } from './TextManager.js';
 import { Rive, EventType, RiveEventType, Layout,  Fit, Alignment } from '@rive-app/webgl2'
 
-
-
-
-
-
 let depthBlurPass;
 let riveOverlay;
 let rive;
-let widthNumInput;
 let width;
 let stoppedInput;
 let loadedInput;
-let playButtonInput;
 let loadingProgress; 
 let currentProgress = 0;
 let progressInterval = null; 
-let songprogress;
 let songprogressadd;
 let scrub;
 let isScrubbing = false;
 let isSeekingAudio = false;
-
-
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass, textManager;
 let isAnimating = false, animationId = null, lastTime = null, isSetupComplete = false;
 let skyPlane, gltfMixer, gltfModel, gltfAnimationActions = [];
 let spotlight, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2();
-let mouseX = 0, mouseY = 0, font, txthdr;
+let mouseX = 0, mouseY = 0, font;
 let cursorPlane = new CursorPlane();
 let titleModel = null;
 let titleMixer;
@@ -59,7 +48,6 @@ const rivecanvas = document.querySelector('.rive');
 const LAYERS = {
   DOFIGNORE: 2,
 };
-
 
 let walkAnimation = null;
 let faceUpAnimation = null;
@@ -73,9 +61,7 @@ const animEndTime = 80;  // Camera animation end time
 const transitionTime = 12; // When to start transitioning to faceUp animation
 const transitionDuration = 2.8; // Duration of the blend in seconds
 
-
 let headBone = null;
-let lookAtTarget = new THREE.Object3D();
 let headQuaternion = new THREE.Quaternion();
 let targetQuaternion = new THREE.Quaternion();
 
@@ -85,7 +71,6 @@ let lastMouseY = 0;
 let mouseInactiveFrames = 0;
 const MOUSE_INACTIVE_THRESHOLD = 60; // frames before returning to original position
 const MOUSE_MOVEMENT_THRESHOLD = 2; // pixels to consider as movement
-
 
 const textureloader = new THREE.TextureLoader();
 const config = {
@@ -137,7 +122,6 @@ const resources = {
   vegetation: null
 };
 
-
 async function init() {
 
   loadRiveOverlay();
@@ -147,21 +131,11 @@ async function init() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.outputEncoding = THREE.sRGBEncoding
-//  renderer.physicallyCorrectLights = true;
   renderer.setSize(window.innerWidth, window.innerHeight);
   
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   scene.fog = new THREE.Fog(0x000000, 30, 100);
-
-
-  const axesHelper = new THREE.AxesHelper(20);
-  axesHelper.position.set(0, 0, -10); // Position it where we can see it
-// scene.add(axesHelper);
-
-  
-GUI.setupUI(); // No parameters needed anymore
-  // GUI.showLoadingScreen();
   
   // Initialize controllers
 
@@ -179,10 +153,8 @@ GUI.setupUI(); // No parameters needed anymore
     completeSetup();
   } catch (error) {
     console.error('Loading failed:', error);
-    GUI.showLoadingError(error.message);
   }
 }
-
 
 function setupEventListeners() {
   // Window resize
@@ -202,37 +174,25 @@ function setupEventListeners() {
     }
   }, { passive: false });
   
-  // Keyboard controls - SPACE for play/pause
+  // Keyboard controls - SPACE for play/pause using the SAME toggle function
   document.addEventListener('keydown', e => {
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
       if (isSetupComplete) {
-        if (isAnimating) {
-          pauseAnimation();
-        } else {
-          startAnimation();
-        }
+        togglePlayPause();
       }
     }
 
     if (e.key === 'd' && depthBlurPass) {
-    depthBlurPass.toggleDebugDepth();
-    // console.log('Depth visualization toggled');
-  }
-  
-  // Add number keys to adjust blur amount
-  if (e.key >= '1' && e.key <= '9' && depthBlurPass) {
-    const blurAmount = parseInt(e.key);
-    depthBlurPass.setMaxBlurSize(blurAmount);
-    // console.log('Max blur size set to:', blurAmount);
-  }
-
+      depthBlurPass.toggleDebugDepth();
+    }
+    
+    if (e.key >= '1' && e.key <= '9' && depthBlurPass) {
+      const blurAmount = parseInt(e.key);
+      depthBlurPass.setMaxBlurSize(blurAmount);
+    }
   });
-  
-  // Setup scrubber
-  GUI.setupScrubber(AudioController.handleScrubberInput, AudioController.handleScrubberChange);
 }
-
 
 function animateProgressTo(targetValue) {
   // Clear any existing animation
@@ -286,8 +246,6 @@ async function loadAllResources() {
     
     // Use smooth animation instead of direct assignment
     animateProgressTo(progress);
-    
-    GUI.updateLoadingProgress('overall', progress);
   };
   
   const manager = LoadingManager.create(
@@ -297,8 +255,6 @@ async function loadAllResources() {
       
       // Smooth animation for granular updates
       animateProgressTo(overallProgress);
-      
-      GUI.updateLoadingProgress('overall', overallProgress);
     },
     () => {
       allResourcesLoaded = true;
@@ -475,7 +431,6 @@ async function loadGLB(path, manager) {
               action.timeScale = 0.7;
               action.play(); // Start walking animation immediately
               action.setEffectiveWeight(1.0);
-              // console.log('Started Walk_01 animation');
             }
             // Handle faceUp animation
             else if (clip.name === 'faceUp') {
@@ -485,7 +440,6 @@ async function loadGLB(path, manager) {
               action.clampWhenFinished = true; // Keep the final pose
               action.setEffectiveWeight(0.0); // Start with 0 weight
               // Don't play it yet - will be triggered at startTime
-              // console.log('Prepared faceUp animation');
             }
             // Handle any other animations
             else {
@@ -498,7 +452,6 @@ async function loadGLB(path, manager) {
         }
         
         resources.glb = gltfModel;
-        // console.log(gltf.animations)
         resolve();
       },
       undefined,
@@ -553,7 +506,6 @@ async function loadTitleGLB(path, manager) {
         }
         
         resources.titleGlb = titleModel;
-        // console.log('Title GLB loaded successfully');
         resolve();
       },
       undefined,
@@ -561,7 +513,6 @@ async function loadTitleGLB(path, manager) {
     );
   });
 }
-
 
 async function loadAudio(path) {
   return new Promise((resolve) => {
@@ -612,15 +563,13 @@ async function initVegetation(manager) {
 
 function onProgress(itemUrl, itemsLoaded, itemsTotal) {
   const progress = (itemsLoaded / itemsTotal) * 100;
-  // GUI.updateLoadingProgress('overall', progress);
-  // console.log(`Loading: ${itemsLoaded}/${itemsTotal} - ${progress.toFixed(1)}%`);
 }
 
 async function loadRiveOverlay() {
   
 
    rive = new Rive({
-        src: 'animations/resp_2.riv', // Ensure this file name is correct
+        src: 'animations/xsna.riv', // Ensure this file name is correct
         canvas: rivecanvas,
         autoplay: true,
         autoBind: true,
@@ -638,36 +587,42 @@ async function loadRiveOverlay() {
 
             const viewmodel = rive.viewModelInstance;
             loadingProgress = viewmodel.number('loadprogress');
-            playButtonInput = viewmodel.trigger('playbutton')
             width = viewmodel.number('width');
             songprogressadd = viewmodel.number('progressnum');
             scrub = viewmodel.boolean('scrub');
-
-
-
+            
           
-          // widthNumInput = inputs.find(i => i.name === 'width_num');
           stoppedInput = inputs.find(i => i.name === 'stopped');
           loadedInput = inputs.find(i => i.name === 'Loaded');
-          // widhtscruber = inputs.find(i => i.name === 'width_scrubber');
-
           
+
+
+            rive.on(EventType.RiveEvent || 'riveevent', (event) => {
+        // Check if this is the click event
+              if (event && event.data && event.data.name === 'click') {
+                
+                // Only toggle if setup is complete
+                if (isSetupComplete) {
+                  togglePlayPause();
+                }
+              }
+            });
+
+
           if (width) {
 
-              // widthNumInput.value = window.innerWidth;
+            
               width.value = window.innerWidth; 
             
           }
           if (stoppedInput) {
               stoppedInput.value = isAnimating; // Set initial state based on animation state
 
-              // console.log('Initial stopped state set to:', stoppedInput.value);
            } else {
               console.warn('Stopped input not found in Rive state machine');
           }
           if (loadedInput) {
               loadedInput.value = false; // Ensure it starts as false
-              // console.log('Initial loaded state set to false');
             } else {
               console.warn('Loaded input not found in Rive state machine');
         }
@@ -682,14 +637,21 @@ async function loadRiveOverlay() {
 
 }
 
-
-
+function togglePlayPause() {
+  if (!isSetupComplete) {
+    return;
+  }
+  
+  if (isAnimating) {
+    pauseAnimation();
+  } else {
+    startAnimation();
+  }
+}
 
 async function completeSetup() {
   if (isSetupComplete) return;
   
-
-   console.log('Holding at 100% for 2 seconds...');
   await new Promise(resolve => setTimeout(resolve, 1000));
 
   // Create camera
@@ -699,9 +661,6 @@ async function completeSetup() {
 
   if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
   
-  // if (songprogress) {
-  //   songprogress.value = 0;
-  // }
 
   // Setup composer and passes
   setupPostProcessing();
@@ -716,7 +675,6 @@ async function completeSetup() {
     rotation: new THREE.Euler(Math.PI / 2.1, 0, Math.PI / -2),
     colors: { cloudColor: '#000000', skyTopColor: '#151761', skyBottomColor: '#000000' }
   });
-  // skyPlane.layers.set(LAYERS.DOFIGNORE);
   scene.add(skyPlane);
 
   const material = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide });
@@ -724,12 +682,6 @@ async function completeSetup() {
   const background = new THREE.Mesh(plane, material);
   background.position.set(0, 0, -200);
   scene.add(background);
- 
-
-  const light = new THREE.AmbientLight(0xffffff, 0.001);
-  // scene.add(light);
- 
-
 
   // Initialize cursor plane
  
@@ -741,7 +693,6 @@ async function completeSetup() {
   
  // Initialize text manager instead of displacement pass
   textManager = new TextManager();
-  // textManager.init(font, scene);
   
   // Configure text appearance
   textManager.setTextConfig({
@@ -761,23 +712,13 @@ async function completeSetup() {
     textManager.setMaterial(textmaterial);
   }
   
-  // Create initial vegetation
+  // Create initial vegetation only once
   VegetationManager.createInitialVegetationWhenReady(scene);
-  
-  // Hide loading screen and enable controls
-  GUI.hideLoadingScreen();
-
-  setTimeout(() => {
-    // Double-check vegetation creation after a short delay
-    VegetationManager.createInitialVegetationWhenReady(scene);
-    GUI.enableControls(AudioController.getAudioDuration(), VegetationManager.getTreeCount());
-  }, 100);
   
   isSetupComplete = true;
 
    if (loadedInput) {
     loadedInput.value = true;
-    console.log('✅ Scene fully loaded - Rive Loaded set to true');
   }
 }
 
@@ -788,7 +729,6 @@ function setupHeadTracking() {
   gltfModel.traverse((child) => {
     if (child.isBone && child.name === 'headbone') {
       headBone = child;
-      // console.log('Found head bone:', headBone);
       
       // Store the initial rotation
       headBone.userData.initialRotation = headBone.rotation.clone();
@@ -919,12 +859,6 @@ function setupPostProcessing() {
 
   composer = new EffectComposer(renderer);
 
-  
-  // composer.addPass(new RenderPass(scene, camera));
-  
-  
-
-
  const taaRenderPass = new TAARenderPass(scene, camera);
   taaRenderPass.unbiased = false;
   taaRenderPass.sampleLevel = 1; // 0 = 1 sample, 1 = 2 samples, 2 = 4 samples
@@ -981,7 +915,6 @@ bloomPass.renderTargetsVertical.forEach(target => {
 
 }
 
-
 function setupLights() {
   scene.add(new THREE.DirectionalLight(0x111111, 5));
   
@@ -1003,16 +936,13 @@ function onWindowResize() {
   }
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer?.setSize(window.innerWidth, window.innerHeight);
-  // displacementScenePass?.setSize(window.innerWidth, window.innerHeight);
 
 if (rive) {
     rive.resizeDrawingSurfaceToCanvas();
     
     // Update the width input to match new window width
     if (width) {
-      // widthNumInput.value = window.innerWidth;
       width.value = window.innerWidth; 
-      // console.log('Updated Rive width input to:', widthNumInput.value);
     }
   }
 
@@ -1034,7 +964,6 @@ function animate(time) {
 if (songprogressadd && scrub) {
   if (scrub.value && !isScrubbing) {
     isScrubbing = true;
-    console.log('Started scrubbing');
   } else if (!scrub.value && isScrubbing) {
     isScrubbing = false;
     const targetValue = songprogressadd.value;
@@ -1105,8 +1034,6 @@ if (songprogressadd && scrub) {
       faceUpAnimation.play();
       faceUpAnimation.setEffectiveWeight(0.0);
       walkAnimation.setEffectiveWeight(1.0);
-      
-      // console.log('Starting transition to faceUp at', audioTime, 'seconds');
     } else if (isInTransition && shouldBeTransitioning) {
       // Continue transition - calculate progress
       const transitionProgress = Math.min((audioTime - transitionStartTime) / transitionDuration, 1.0);
@@ -1119,7 +1046,6 @@ if (songprogressadd && scrub) {
       
       if (transitionProgress >= 1.0) {
         isInTransition = false;
-        // console.log('Transition to faceUp completed');
       }
     } else if (isInTransition && shouldBeInFaceUp && !shouldBeTransitioning) {
       // Continue quick transition after jump - use half duration
@@ -1134,7 +1060,6 @@ if (songprogressadd && scrub) {
       
       if (transitionProgress >= 1.0) {
         isInTransition = false;
-        console.log('Quick transition to faceUp completed');
       }
     } else if (shouldBeInFaceUp && !shouldBeTransitioning && !hasTransitioned) {
       // We jumped past the transition time - check if we need to transition
@@ -1153,13 +1078,10 @@ if (songprogressadd && scrub) {
         faceUpAnimation.play();
         faceUpAnimation.setEffectiveWeight(0.0);
         walkAnimation.setEffectiveWeight(1.0);
-        
-        console.log('Starting quick transition to faceUp after jump at', audioTime, 'seconds');
       } else if (faceUpWeight === 1) {
         // Already in faceUp, just update state
         hasTransitioned = true;
         isInTransition = false;
-        console.log('Already in faceUp animation, no transition needed');
       }
     } else if (shouldBeInFaceUp && !shouldBeTransitioning && hasTransitioned) {
       // We're past the transition, ensure faceUp is fully active
@@ -1186,8 +1108,6 @@ if (songprogressadd && scrub) {
       }
       walkAnimation.setEffectiveWeight(1.0);
       walkAnimation.timeScale = 0.7; // Ensure correct time scale
-      
-      console.log('Jumped back to Walk_01 animation');
     } else if (!shouldBeInFaceUp && !hasTransitioned) {
       // We're before the transition and haven't transitioned yet
       // Ensure walk animation is at correct speed
@@ -1250,50 +1170,38 @@ if (songprogressadd && scrub) {
   if (scene && camera) composer.render();
 }
 
-// Controls
 function startAnimation() {
-  GUI.updatePlaybackState(true);
+  if (isAnimating) {
+    return;
+  }
+  
   AudioController.startAudio();
   lastTime = null;
   isAnimating = true;
-   if (stoppedInput) {
+  
+  if (stoppedInput) {
     stoppedInput.value = false;
-    // console.log('Rive stopped state set to false (playing)');
   }
+  
   animate(performance.now());
 }
 
 function pauseAnimation() {
-  if (!isAnimating) return;
+  if (!isAnimating) {
+    return;
+  }
+  
   AudioController.pauseAudio();
   if (animationId) {
     cancelAnimationFrame(animationId);
     animationId = null;
   }
   isAnimating = false;
-  GUI.updatePlaybackState(false);
-   if (stoppedInput) {
+  
+  if (stoppedInput) {
     stoppedInput.value = true;
-    // console.log('Rive stopped state set to true (paused)');
   }
 }
-
-// GLB Animation Controls
-const animControl = (method, i = 0) => {
-  if (gltfAnimationActions?.[i]) {
-    if (method === 'play') gltfAnimationActions[i].play();
-    else if (method === 'pause') gltfAnimationActions[i].paused = true;
-    else if (method === 'stop') gltfAnimationActions[i].stop();
-  }
-};
-
-export const playGLBAnimation = (i = 0) => animControl('play', i);
-export const pauseGLBAnimation = (i = 0) => animControl('pause', i);
-export const stopGLBAnimation = (i = 0) => animControl('stop', i);
-export const playAllGLBAnimations = () => gltfAnimationActions.forEach((_, i) => playGLBAnimation(i));
-export const pauseAllGLBAnimations = () => gltfAnimationActions.forEach((_, i) => pauseGLBAnimation(i));
-export const stopAllGLBAnimations = () => gltfAnimationActions.forEach((_, i) => stopGLBAnimation(i));
-
 
 setTimeout(() => {
   init();
