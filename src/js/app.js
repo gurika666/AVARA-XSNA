@@ -16,7 +16,6 @@ import { DepthDrivenBlurPass } from './custom-dof.js';
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
 import { TextManager } from './TextManager.js';
 import { Rive, EventType, RiveEventType, Layout,  Fit, Alignment } from '@rive-app/webgl2'
-import { WiggleBone } from "wiggle";
 import { applyStarNestToModel, updateStarNestMaterials } from './star-nest-shader.js';
 
 let depthBlurPass;
@@ -35,8 +34,7 @@ let isSeekingAudio = false;
 
 let starNestMaterials = new Map();
 
-// Wiggle bones array
-let wiggleBones = [];
+
 
 let vegetationStopped = false;
 
@@ -68,11 +66,6 @@ let hasTransitioned = false;
 let isInTransition = false;
 let transitionStartTime = null;
 
-// Animation timing
-const animStartTime = 60;
-const animEndTime = 80;
-const transitionTime = 80;
-const transitionDuration = 2.8;
 
 let headBone = null;
 let headQuaternion = new THREE.Quaternion();
@@ -124,15 +117,36 @@ const config = {
   }
 };
 
-  // Camera animation
-  let startPos = new THREE.Vector3(0, 2, 0);
-  let endPos = new THREE.Vector3(0, 12, -94);
-  
-  let startRot = new THREE.Euler(0, 0, 0);
-  let endRot = new THREE.Euler(0.8, 0, 0);
+// Animation timing
+const animStartTime = 60;
+const animEndTime = 80;
+const transitionTime = 77;
+const transitionDuration = 2.8;
 
-  let startFOV = 40;  // Starting FOV
-  let endFOV = 90;    // Ending FOV
+ // First camera animation (existing)
+let startPos = new THREE.Vector3(0, 2, 0);
+let endPos = new THREE.Vector3(0, 12, -94);
+
+let startRot = new THREE.Euler(0, 0, 0);
+let endRot = new THREE.Euler(0.8, 0, 0);
+
+let startFOV = 40;
+let endFOV = 90;
+
+// Second camera animation (new)
+let startPos2 = new THREE.Vector3(0, 12, -94);  // Starts where first animation ends
+let endPos2 = new THREE.Vector3(0, 12, -95);   // Moves to the left, down slightly, and forward a bit
+
+let startRot2 = new THREE.Euler(0.8, 0, 0);     // Starts where first animation ends
+let endRot2 = new THREE.Euler(0, 0, 0);    // Less upward tilt, rotate left
+
+let startFOV2 = 90;   // Starts where first animation ends
+let endFOV2 = 10;     // Narrows field of view for more focused shot
+
+
+// Second animation timing (new)
+const animStartTime2 = 85;   // Gives a 5 second pause after first animation
+const animEndTime2 = 110;    // 25 second duration for second animation
   
   let fogStartColor = new THREE.Color(config.fog.start.color);
   let fogEndColor = new THREE.Color(config.fog.end.color);
@@ -226,13 +240,6 @@ function setupEventListeners() {
       depthBlurPass.setMaxBlurSize(blurAmount);
     }
 
-    // Wiggle bones controls
-    if (e.key === 'w' && wiggleBones.length > 0) {
-      wiggleBones.forEach(bone => {
-        bone.enabled = !bone.enabled;
-      });
-      console.log('Toggled wiggle bones');
-    }
   });
 }
 
@@ -425,7 +432,7 @@ async function loadGLB(path, manager) {
         
         // Setup tracking systems
         setupHeadTracking();
-        // setupWiggleBones();
+ 
         
         // Handle animations
         if (gltf.animations?.length) {
@@ -691,30 +698,6 @@ function setupHeadTracking() {
   }
 }
 
-function setupWiggleBones() {
-  if (!gltfModel) return;
-  
-  wiggleBones = [];
-  
-  gltfModel.traverse((child) => {
-    if (child.isBone && child.name.includes('wiggle_')) {
-      console.log('Found wiggle bone:', child.name);
-      
-      const wiggleBone = new WiggleBone(child, {
-        stiffness: 0,
-        damping: 0.3,
-        elasticity: 1,
-        maxAngle: Math.PI / 12,
-        gravity: new THREE.Vector3(0, -0.5, 0),
-        enabled: true
-      });
-      
-      wiggleBones.push(wiggleBone);
-    }
-  });
-  
-  console.log(`Set up ${wiggleBones.length} wiggle bones`);
-}
 
 function updateTitlePosition(audioTime) {
   if (!titleModel) return;
@@ -1090,49 +1073,49 @@ function updateHeadLookAtOptimized(camera, deltaTime) {
   headBone.quaternion.slerp(animationCache.blendedQuaternion, smoothingFactor);
 }
 
-// Optimized camera update with state caching
 function updateCameraOptimized(audioTime) {
   let currentAnimState;
   
   if (audioTime < animStartTime) {
-    currentAnimState = 0; // Before animation
+    currentAnimState = 0; // Before any animation
   } else if (audioTime <= animEndTime) {
-    currentAnimState = 1; // During animation
+    currentAnimState = 1; // During first animation
+  } else if (audioTime < animStartTime2) {
+    currentAnimState = 2; // Between animations
+  } else if (audioTime <= animEndTime2) {
+    currentAnimState = 3; // During second animation
   } else {
-    currentAnimState = 2; // After animation
+    currentAnimState = 4; // After all animations
   }
   
-  // Skip updates if state hasn't changed (except during animation)
-  if (currentAnimState === animationCache.lastCameraAnimState && currentAnimState !== 1) {
+  // Skip updates if state hasn't changed (except during animations)
+  if (currentAnimState === animationCache.lastCameraAnimState && 
+      currentAnimState !== 1 && currentAnimState !== 3) {
     return;
   }
   
   if (currentAnimState === 0) {
-    // Before animation
+    // Before any animation
     baseCameraPos.copy(startPos);
     baseCameraRot.copy(startRot);
     
-    // Only update fog if values changed
     if (scene.fog.near !== config.fog.start.near) {
       scene.fog.near = config.fog.start.near;
       scene.fog.far = config.fog.start.far;
       scene.fog.color.copy(fogStartColor);
     }
     
-    // Only update FOV if changed
     if (camera.fov !== startFOV) {
       camera.fov = startFOV;
       camera.updateProjectionMatrix();
     }
     
-    // Reset vegetation if needed
     if (vegetationStopped) {
       vegetationStopped = false;
-      console.log('Resetting vegetation - scrubbed before animation end');
     }
     
   } else if (currentAnimState === 1) {
-    // During animation - always update
+    // During first animation
     const progress = (audioTime - animStartTime) / (animEndTime - animStartTime);
     const easedProgress = progress * progress * (3 - 2 * progress);
     
@@ -1144,7 +1127,6 @@ function updateCameraOptimized(audioTime) {
     const newFogNear = THREE.MathUtils.lerp(config.fog.start.near, config.fog.end.near, easedProgress);
     const newFogFar = THREE.MathUtils.lerp(config.fog.start.far, config.fog.end.far, easedProgress);
     
-    // Only update fog if values actually changed
     if (Math.abs(scene.fog.near - newFogNear) > 0.01 || 
         Math.abs(scene.fog.far - newFogFar) > 0.01) {
       scene.fog.near = newFogNear;
@@ -1152,25 +1134,21 @@ function updateCameraOptimized(audioTime) {
       scene.fog.color.lerpColors(fogStartColor, fogEndColor, easedProgress);
     }
     
-    // Animate FOV
     const newFOV = THREE.MathUtils.lerp(startFOV, endFOV, easedProgress);
     if (Math.abs(camera.fov - newFOV) > 0.01) {
       camera.fov = newFOV;
       camera.updateProjectionMatrix();
     }
     
-    // Reset vegetation if scrubbing back
     if (vegetationStopped) {
       vegetationStopped = false;
-      console.log('Resetting vegetation - scrubbed during animation');
     }
     
-  } else {
-    // After animation
+  } else if (currentAnimState === 2) {
+    // Between animations (holding at end of first animation)
     baseCameraPos.copy(endPos);
     baseCameraRot.copy(endRot);
     
-    // Only update if needed
     if (scene.fog.near !== config.fog.end.near) {
       scene.fog.near = config.fog.end.near;
       scene.fog.far = config.fog.end.far;
@@ -1181,12 +1159,40 @@ function updateCameraOptimized(audioTime) {
       camera.fov = endFOV;
       camera.updateProjectionMatrix();
     }
+    
+  } else if (currentAnimState === 3) {
+    // During second animation
+    const progress = (audioTime - animStartTime2) / (animEndTime2 - animStartTime2);
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    
+    baseCameraPos.lerpVectors(startPos2, endPos2, easedProgress);
+    baseCameraRot.x = THREE.MathUtils.lerp(startRot2.x, endRot2.x, easedProgress);
+    baseCameraRot.y = THREE.MathUtils.lerp(startRot2.y, endRot2.y, easedProgress);
+    baseCameraRot.z = THREE.MathUtils.lerp(startRot2.z, endRot2.z, easedProgress);
+    
+    // You can also animate fog during second animation if desired
+    // For now keeping it at the end state of first animation
+    
+    const newFOV = THREE.MathUtils.lerp(startFOV2, endFOV2, easedProgress);
+    if (Math.abs(camera.fov - newFOV) > 0.01) {
+      camera.fov = newFOV;
+      camera.updateProjectionMatrix();
+    }
+    
+  } else {
+    // After all animations
+    baseCameraPos.copy(endPos2);
+    baseCameraRot.copy(endRot2);
+    
+    if (camera.fov !== endFOV2) {
+      camera.fov = endFOV2;
+      camera.updateProjectionMatrix();
+    }
   }
   
   camera.position.copy(baseCameraPos);
   animationCache.lastCameraAnimState = currentAnimState;
 }
-
 // Separate function for animation transitions (cleaner code)
 function handleAnimationTransitions(audioTime, deltaTime) {
   if (!faceUpAnimation || !walkAnimation) return;

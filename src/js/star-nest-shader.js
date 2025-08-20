@@ -14,9 +14,9 @@ export function createStarNestMaterial(options = {}) {
     metalness = 1.0,
     roughness = 0.5,
     envMapIntensity = 0.15,
-    swirlSpeed = 0.1,
+    swirlSpeed = 1.1,
     swirlTightness = 0.01,
-    swirlAmount = 0.0,
+    swirlAmount = 1.0,
     maskTexture = null,
     maskIntensity = 1.0,
     // New nebula parameters
@@ -499,14 +499,7 @@ export function applyStarNestToModel(gltfModel, resources = {}) {
       
       // Create a new physical material with star effect and mask
       const starNestMat = createStarNestMaterial({
-        maskTexture: gradientTexture,
-        maskIntensity: 1.0,
-        // Nebula settings
-        nebulaIntensity: 0.3,
-        nebulaScale: 2.0,
-        nebulaColor1: new THREE.Vector3(0.5, 0.2, 0.8), // Purple
-        nebulaColor2: new THREE.Vector3(0.2, 0.4, 0.9), // Blue
-        nebulaSpeed: 0.015
+      
       });
       
       // Copy environment map if available
