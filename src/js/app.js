@@ -6,7 +6,6 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { DisplacementScenePass } from './DisplacementScenePass.js';
 import { ChromaticAberrationPass, CursorPlane, createSkyPlane, updateCloudUniforms } from './shader-manager.js';
 import {GammaCorrectionShader} from 'three/examples/jsm/shaders/GammaCorrectionShader'
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
@@ -17,6 +16,8 @@ import { DepthDrivenBlurPass } from './custom-dof.js';
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
 import { TextManager } from './TextManager.js';
 import { Rive, EventType, RiveEventType, Layout,  Fit, Alignment } from '@rive-app/webgl2'
+import { WiggleBone } from "wiggle";
+import { applyStarNestToModel, updateStarNestMaterials } from './star-nest-shader.js';
 
 let depthBlurPass;
 let riveOverlay;
@@ -32,8 +33,16 @@ let scrub;
 let isScrubbing = false;
 let isSeekingAudio = false;
 
+let starNestMaterials = new Map();
+
+// Wiggle bones array
+let wiggleBones = [];
+
+
+
+
 // Globals
-let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, displacementScenePass, textManager;
+let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, textManager;
 let isAnimating = false, animationId = null, lastTime = null, isSetupComplete = false;
 let skyPlane, gltfMixer, gltfModel, gltfAnimationActions = [];
 let spotlight, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2();
@@ -45,21 +54,25 @@ let textmaterial;
 const canvas = document.querySelector('.main-animation');
 const rivecanvas = document.querySelector('.rive');
 
+// Camera tracking globals (FIX: Added here for proper scope)
+let baseCameraPos = new THREE.Vector3();
+let baseCameraRot = new THREE.Euler();
+
 const LAYERS = {
   DOFIGNORE: 2,
 };
 
 let walkAnimation = null;
 let faceUpAnimation = null;
-let hasTransitioned = false; // Track if we've already transitioned
-let isInTransition = false; // Track if we're currently transitioning
-let transitionStartTime = null; // Track when transition started
+let hasTransitioned = false;
+let isInTransition = false;
+let transitionStartTime = null;
 
 // Animation timing
-const animStartTime = 60; // When to start transitioning to faceUp
-const animEndTime = 80;  // Camera animation end time
-const transitionTime = 12; // When to start transitioning to faceUp animation
-const transitionDuration = 2.8; // Duration of the blend in seconds
+const animStartTime = 60;
+const animEndTime = 80;
+const transitionTime = 80;
+const transitionDuration = 2.8;
 
 let headBone = null;
 let headQuaternion = new THREE.Quaternion();
@@ -69,16 +82,27 @@ let targetQuaternion = new THREE.Quaternion();
 let lastMouseX = 0;
 let lastMouseY = 0;
 let mouseInactiveFrames = 0;
-const MOUSE_INACTIVE_THRESHOLD = 60; // frames before returning to original position
-const MOUSE_MOVEMENT_THRESHOLD = 2; // pixels to consider as movement
+const MOUSE_INACTIVE_THRESHOLD = 60;
+const MOUSE_MOVEMENT_THRESHOLD = 2;
 
 const textureloader = new THREE.TextureLoader();
 const config = {
   text: { size: 2, height: 0.1, depth: 1, z: -50 },
-  bloom: { strength: 0.1, radius: 2, threshold: 0.1 },
+  bloom: { strength: 0.2, radius: 2.0, threshold: 0.1 },
   chromaticAberration: { strength: 0.01 },
-  displacement: { scale: 0.5, speed: 0.2 },
   camera: { fov: 40 },
+  fog: {
+    start: {
+      near: 30,
+      far: 100,
+      color: 0x000000
+    },
+    end: {
+      near: 3,
+      far: 20,
+      color: 0x000000
+    }
+  },
   glb: {
     path: 'mesh/latex.glb',
     position: new THREE.Vector3(0, 0, -100),
@@ -88,17 +112,30 @@ const config = {
   },
   titleGlb: {
     path: 'mesh/title.glb',
-    position: new THREE.Vector3(0, 4, -18), // Starting position
+    position: new THREE.Vector3(0, 4, -18),
     scale: new THREE.Vector3(0.7, 0.7, 0.7),
     rotation: new THREE.Euler(-0.2, 0, 0),
     animation: {
-      startTime: 0, // Start moving at 10 seconds
-      endTime: 10,   // End at 40 seconds (adjust as needed)
-      startZ: -18,   // Starting Z position
-      endZ: 10       // End Z position (past the camera)
+      startTime: 0,
+      endTime: 10,
+      startZ: -18,
+      endZ: 10
     }
   }
 };
+
+  // Camera animation
+  let startPos = new THREE.Vector3(0, 2, 0);
+  let endPos = new THREE.Vector3(0, 6, -92);
+  
+  let startRot = new THREE.Euler(0, 0, 0);
+  let endRot = new THREE.Euler(0.8, 0, 0);
+
+  let startFOV = 40;  // Starting FOV
+  let endFOV = 90;    // Ending FOV
+  
+  let fogStartColor = new THREE.Color(config.fog.start.color);
+  let fogEndColor = new THREE.Color(config.fog.end.color);
 
 const textAppearTimes = [
   { time: 0.593, text: "თვალებს" }, { time: 26.593, text: "თვალებს" },
@@ -114,7 +151,6 @@ const textAppearTimes = [
 const resources = {
   hdri: null,
   txthdr: null,
-  displacement: null,
   font: null,
   glb: null,
   titleGlb: null,
@@ -123,26 +159,24 @@ const resources = {
 };
 
 async function init() {
-
   loadRiveOverlay();
 
   // Setup renderer first
-  renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvas  });
+  renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvas });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
-  renderer.outputEncoding = THREE.sRGBEncoding
+  renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.setSize(window.innerWidth, window.innerHeight);
   
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
-  scene.fog = new THREE.Fog(0x000000, 30, 100);
+  scene.fog = new THREE.Fog(config.fog.start.color, config.fog.start.near, config.fog.start.far);
   
   // Initialize controllers
-
   AudioController.init({ 
-  onTimeUpdate: (t, dt) => textManager?.update(t, dt, textAppearTimes),
-  onScrubComplete: t => textManager?.reset(t, textAppearTimes)
-});
+    onTimeUpdate: (t, dt) => textManager?.update(t, dt, textAppearTimes),
+    onScrubComplete: t => textManager?.reset(t, textAppearTimes)
+  });
   
   // Setup event listeners
   setupEventListeners();
@@ -174,7 +208,7 @@ function setupEventListeners() {
     }
   }, { passive: false });
   
-  // Keyboard controls - SPACE for play/pause using the SAME toggle function
+  // Keyboard controls
   document.addEventListener('keydown', e => {
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
@@ -191,19 +225,25 @@ function setupEventListeners() {
       const blurAmount = parseInt(e.key);
       depthBlurPass.setMaxBlurSize(blurAmount);
     }
+
+    // Wiggle bones controls
+    if (e.key === 'w' && wiggleBones.length > 0) {
+      wiggleBones.forEach(bone => {
+        bone.enabled = !bone.enabled;
+      });
+      console.log('Toggled wiggle bones');
+    }
   });
 }
 
 function animateProgressTo(targetValue) {
-  // Clear any existing animation
   if (progressInterval) {
     clearInterval(progressInterval);
   }
   
-  // Calculate step size based on distance
   const distance = Math.abs(targetValue - currentProgress);
-  const duration = 500; // 500ms for any animation
-  const steps = 30; // 30 steps for smooth animation
+  const duration = 500;
+  const steps = 30;
   const stepSize = distance / steps;
   const stepDelay = duration / steps;
   
@@ -213,7 +253,6 @@ function animateProgressTo(targetValue) {
     stepCount++;
     
     if (stepCount >= steps || Math.abs(targetValue - currentProgress) < 0.5) {
-      // We're done, set final value
       currentProgress = targetValue;
       if (loadingProgress) {
         loadingProgress.value = targetValue;
@@ -221,7 +260,6 @@ function animateProgressTo(targetValue) {
       clearInterval(progressInterval);
       progressInterval = null;
     } else {
-      // Move towards target
       if (currentProgress < targetValue) {
         currentProgress += stepSize;
       } else {
@@ -237,14 +275,12 @@ function animateProgressTo(targetValue) {
 
 async function loadAllResources() {
   let allResourcesLoaded = false;
-  let totalSteps = 6; // Your existing value
+  let totalSteps = 6;
   let currentStep = 0;
   
   const updateProgress = () => {
     currentStep++;
     const progress = (currentStep / totalSteps) * 100;
-    
-    // Use smooth animation instead of direct assignment
     animateProgressTo(progress);
   };
   
@@ -252,13 +288,10 @@ async function loadAllResources() {
     (itemUrl, itemsLoaded, itemsTotal) => {
       const itemProgress = (itemsLoaded / itemsTotal) * 100;
       const overallProgress = ((currentStep + (itemProgress / 100)) / totalSteps) * 100;
-      
-      // Smooth animation for granular updates
       animateProgressTo(overallProgress);
     },
     () => {
       allResourcesLoaded = true;
-      // Animate to 100%
       animateProgressTo(100);
     },
     (url) => {
@@ -266,15 +299,12 @@ async function loadAllResources() {
     }
   );
   
-  // Initialize at 0
   currentProgress = 0;
   if (loadingProgress) {
     loadingProgress.value = 0;
   }
   
-  // Your existing loading phases...
   try {
-    // Show some initial progress
     animateProgressTo(5);
     await loadAudio('audio/xsna.mp3');
     updateProgress();
@@ -283,7 +313,6 @@ async function loadAllResources() {
     throw error;
   }
   
-  // Rest of your loading code remains the same...
   try {
     await Promise.all([
       loadHDRTexture('images/txt.hdr', 'txthdr', manager),
@@ -295,9 +324,7 @@ async function loadAllResources() {
     throw error;
   }
   
-  // Continue with remaining tasks...
   const remainingTasks = [
-    loadTexture('images/displacement-map.png', 'displacement', manager),
     loadFont('fonts/Monarch_Regular.json', manager),
     loadGLB(config.glb.path, manager),
     loadTitleGLB(config.titleGlb.path, manager),
@@ -312,7 +339,6 @@ async function loadAllResources() {
     throw error;
   }
   
-  // Wait for completion
   if (!allResourcesLoaded) {
     await new Promise(resolve => {
       const checkInterval = setInterval(() => {
@@ -329,10 +355,7 @@ async function loadAllResources() {
     });
   }
   
-  // Final animation to 100%
   animateProgressTo(100);
-  
-  // Wait a bit for animation to complete
   await new Promise(resolve => setTimeout(resolve, 600));
 }
 
@@ -344,33 +367,15 @@ async function loadHDRTexture(path, key, manager) {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         resources[key] = texture;
         textmaterial = new THREE.MeshPhysicalMaterial({
-
-              envMap: resources.hdri,
-              envMapIntensity : 0.6,
-              metalness : 1,
-              roughness : 0,
-
-
-            }) 
+          envMap: resources.hdri,
+          envMapIntensity: 0.6,
+          metalness: 1,
+          roughness: 0,
+        });
         resolve();
       },
       undefined,
       error => reject(new Error(`Failed to load HDR: ${path}`))
-    );
-  });
-}
-
-async function loadTexture(path, key, manager) {
-  return new Promise((resolve, reject) => {
-    new THREE.TextureLoader(manager).load(
-      path,
-      texture => {
-        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-        resources[key] = texture;
-        resolve();
-      },
-      undefined,
-      error => reject(new Error(`Failed to load texture: ${path}`))
     );
   });
 }
@@ -397,18 +402,20 @@ async function loadGLB(path, manager) {
       gltf => {
         gltfModel = gltf.scene;
         
-        // Apply txthdr to latex materials
-        if (resources.txthdr) {
-          gltfModel.traverse(child => {
-            if (child.isMesh && child.material?.name?.includes("latex_")) {
-              const mat = child.material.clone();
-              mat.envMap = resources.txthdr;
-              mat.envMapIntensity = 1.0;
-              mat.needsUpdate = true;
-              child.material = mat;
-            }
-          });
-        }
+        // // Apply materials
+        // if (resources.txthdr) {
+        //   gltfModel.traverse(child => {
+        //     if (child.isMesh && child.material?.name?.includes("latex_")) {
+        //       const mat = child.material.clone();
+        //       mat.envMap = resources.txthdr;
+        //       mat.envMapIntensity = 1.0;
+        //       mat.needsUpdate = true;
+        //       child.material = mat;
+        //     }
+        //   });
+        // }
+
+        starNestMaterials = applyStarNestToModel(gltfModel, resources);
         
         const { position: p, scale: s, rotation: r } = config.glb;
         gltfModel.position.copy(p);
@@ -416,7 +423,9 @@ async function loadGLB(path, manager) {
         gltfModel.rotation.copy(r);
         scene.add(gltfModel);
         
+        // Setup tracking systems
         setupHeadTracking();
+        // setupWiggleBones();
         
         // Handle animations
         if (gltf.animations?.length) {
@@ -424,24 +433,24 @@ async function loadGLB(path, manager) {
           gltf.animations.forEach(clip => {
             const action = gltfMixer.clipAction(clip);
             
-            // Handle Walk_01 animation
             if (clip.name === 'Walk_01') {
               walkAnimation = action;
               action.setLoop(THREE.LoopRepeat);
               action.timeScale = 0.7;
-              action.play(); // Start walking animation immediately
+              action.play();
               action.setEffectiveWeight(1.0);
             }
-            // Handle faceUp animation
             else if (clip.name === 'faceUp') {
               faceUpAnimation = action;
               action.setLoop(THREE.LoopOnce);
               action.timeScale = 0.7;
-              action.clampWhenFinished = true; // Keep the final pose
-              action.setEffectiveWeight(0.0); // Start with 0 weight
-              // Don't play it yet - will be triggered at startTime
+              action.clampWhenFinished = true;
+              action.setEffectiveWeight(0.0);
+              if (!faceUpAnimation.userData) {
+                faceUpAnimation.userData = {};
+              }
+              faceUpAnimation.userData.lastAudioTime = 0;
             }
-            // Handle any other animations
             else {
               action.setLoop(THREE.LoopRepeat);
               action.timeScale = 0.7;
@@ -467,41 +476,27 @@ async function loadTitleGLB(path, manager) {
       gltf => {
         titleModel = gltf.scene;
         
-        // Apply materials if needed (similar to the main GLB)
-
-  
-          titleModel.traverse(child => {
-            if (child.isMesh) {
-             
-
-              child.material = textmaterial;
-             
-            }
-
-          });
+        titleModel.traverse(child => {
+          if (child.isMesh) {
+            child.material = textmaterial;
+          }
+        });
         
-
-        // Apply transform from config
         const { position: p, scale: s, rotation: r } = config.titleGlb;
         titleModel.position.copy(p);
         titleModel.scale.copy(s);
         titleModel.rotation.copy(r);
         
-        // Add to scene
-        scene.add(titleModel);
-
+        // scene.add(titleModel);
         
-        // Handle animations if the title has any
         if (gltf.animations?.length) {
           titleMixer = new THREE.AnimationMixer(titleModel);
           gltf.animations.forEach(clip => {
             const action = titleMixer.clipAction(clip);
             action.setLoop(THREE.LoopRepeat);
             action.play();
-           
           });
           
-          // Store mixer reference if you need to update it in the animation loop
           titleModel.userData.mixer = titleMixer;
         }
         
@@ -517,8 +512,6 @@ async function loadTitleGLB(path, manager) {
 async function loadAudio(path) {
   return new Promise((resolve) => {
     AudioController.loadAudio(path);
-    // Audio loading is handled internally by AudioController
-    // We'll resolve immediately and let it load in background
     resources.audio = true;
     resolve();
   });
@@ -526,14 +519,11 @@ async function loadAudio(path) {
 
 async function initVegetation(manager) {
   return new Promise((resolve) => {
-    // Track vegetation loading state
     let vegetationLoaded = false;
     let checkInterval;
     
-    // Initialize vegetation manager
     VegetationManager.init(scene, manager);
     
-    // Check if vegetation resources are loaded
     const checkVegetationLoaded = () => {
       if (VegetationManager.isLoaded()) {
         vegetationLoaded = true;
@@ -543,12 +533,10 @@ async function initVegetation(manager) {
       }
     };
     
-    // Check immediately and then periodically
     checkVegetationLoaded();
     if (!vegetationLoaded) {
       checkInterval = setInterval(checkVegetationLoaded, 100);
       
-      // Timeout after 30 seconds
       setTimeout(() => {
         if (!vegetationLoaded) {
           console.warn('Vegetation loading timed out');
@@ -561,80 +549,54 @@ async function initVegetation(manager) {
   });
 }
 
-function onProgress(itemUrl, itemsLoaded, itemsTotal) {
-  const progress = (itemsLoaded / itemsTotal) * 100;
-}
-
 async function loadRiveOverlay() {
-  
+  rive = new Rive({
+    src: 'animations/xsna.riv',
+    canvas: rivecanvas,
+    autoplay: true,
+    autoBind: true,
+    artboard: 'Artboard',
+    stateMachines: 'State Machine 1',
+    layout: new Layout({
+      fit: Fit.Layout,
+    }),
+    onLoad: () => {
+      rive.resizeDrawingSurfaceToCanvas();
+      const inputs = rive.stateMachineInputs('State Machine 1');
+      const gl = rivecanvas.getContext('webgl2') || rivecanvas.getContext('webgl');
 
-   rive = new Rive({
-        src: 'animations/xsna.riv', // Ensure this file name is correct
-        canvas: rivecanvas,
-        autoplay: true,
-        autoBind: true,
-        artboard: 'Artboard', // Ensure this artboard name is correct
-        stateMachines: 'State Machine 1', // Ensure this state machine name is correct
-        layout: new Layout({
-        
-          fit: Fit.Layout,
-        }),
-        onLoad: () => {
-
-            rive.resizeDrawingSurfaceToCanvas();
-            const inputs = rive.stateMachineInputs('State Machine 1');
-            const gl = rivecanvas.getContext('webgl2') || rivecanvas.getContext('webgl');
-
-            const viewmodel = rive.viewModelInstance;
-            loadingProgress = viewmodel.number('loadprogress');
-            width = viewmodel.number('width');
-            songprogressadd = viewmodel.number('progressnum');
-            scrub = viewmodel.boolean('scrub');
-            
-          
-          stoppedInput = inputs.find(i => i.name === 'stopped');
-          loadedInput = inputs.find(i => i.name === 'Loaded');
-          
-
-
-            rive.on(EventType.RiveEvent || 'riveevent', (event) => {
-        // Check if this is the click event
-              if (event && event.data && event.data.name === 'click') {
-                
-                // Only toggle if setup is complete
-                if (isSetupComplete) {
-                  togglePlayPause();
-                }
-              }
-            });
-
-
-          if (width) {
-
-            
-              width.value = window.innerWidth; 
-            
-          }
-          if (stoppedInput) {
-              stoppedInput.value = isAnimating; // Set initial state based on animation state
-
-           } else {
-              console.warn('Stopped input not found in Rive state machine');
-          }
-          if (loadedInput) {
-              loadedInput.value = false; // Ensure it starts as false
-            } else {
-              console.warn('Loaded input not found in Rive state machine');
-        }
-
-        
+      const viewmodel = rive.viewModelInstance;
+      loadingProgress = viewmodel.number('loadprogress');
+      width = viewmodel.number('width');
+      songprogressadd = viewmodel.number('progressnum');
+      scrub = viewmodel.boolean('scrub');
       
-  
+      stoppedInput = inputs.find(i => i.name === 'stopped');
+      loadedInput = inputs.find(i => i.name === 'Loaded');
+
+      rive.on(EventType.RiveEvent || 'riveevent', (event) => {
+        if (event && event.data && event.data.name === 'click') {
+          if (isSetupComplete) {
+            togglePlayPause();
+          }
+        }
+      });
+
+      if (width) {
+        width.value = window.innerWidth; 
+      }
+      if (stoppedInput) {
+        stoppedInput.value = isAnimating;
+      } else {
+        console.warn('Stopped input not found in Rive state machine');
+      }
+      if (loadedInput) {
+        loadedInput.value = false;
+      } else {
+        console.warn('Loaded input not found in Rive state machine');
+      }
     }
-    });
-    
-
-
+  });
 }
 
 function togglePlayPause() {
@@ -654,21 +616,15 @@ async function completeSetup() {
   
   await new Promise(resolve => setTimeout(resolve, 1000));
 
-  // Create camera
   camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 2, 0);
-  camera.layers.enable(LAYERS.DOFIGNORE); // This is the fix!
+  camera.layers.enable(LAYERS.DOFIGNORE);
 
   if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
-  
 
-  // Setup composer and passes
   setupPostProcessing();
-  
-  // Setup lights
   setupLights();
   
-  // Create sky plane
   skyPlane = createSkyPlane({
     width: 300, height: 300,
     position: new THREE.Vector3(0, 40, -50),
@@ -683,18 +639,14 @@ async function completeSetup() {
   background.position.set(0, 0, -200);
   scene.add(background);
 
-  // Initialize cursor plane
- 
   cursorPlane.init(scene, camera);
 
   if (cursorPlane.plane) {
-  cursorPlane.plane.layers.set(LAYERS.DOFIGNORE);
-}
+    cursorPlane.plane.layers.set(LAYERS.DOFIGNORE);
+  }
   
- // Initialize text manager instead of displacement pass
   textManager = new TextManager();
   
-  // Configure text appearance
   textManager.setTextConfig({
     size: 0.8,
     height: 0.05,
@@ -707,30 +659,28 @@ async function completeSetup() {
   
   textManager.setMoveSpeed(15);
 
-    if (resources.txthdr) {
- 
+  if (resources.txthdr) {
     textManager.setMaterial(textmaterial);
   }
   
-  // Create initial vegetation only once
   VegetationManager.createInitialVegetationWhenReady(scene);
   
   isSetupComplete = true;
 
-   if (loadedInput) {
+  if (loadedInput) {
     loadedInput.value = true;
+  }
+  if(songprogressadd) {
+    songprogressadd.value = 0;
   }
 }
 
 function setupHeadTracking() {
   if (!gltfModel) return;
   
-  // Find the head bone
   gltfModel.traverse((child) => {
     if (child.isBone && child.name === 'headbone') {
       headBone = child;
-      
-      // Store the initial rotation
       headBone.userData.initialRotation = headBone.rotation.clone();
       headBone.userData.initialQuaternion = headBone.quaternion.clone();
     }
@@ -741,22 +691,43 @@ function setupHeadTracking() {
   }
 }
 
+function setupWiggleBones() {
+  if (!gltfModel) return;
+  
+  wiggleBones = [];
+  
+  gltfModel.traverse((child) => {
+    if (child.isBone && child.name.includes('wiggle_')) {
+      console.log('Found wiggle bone:', child.name);
+      
+      const wiggleBone = new WiggleBone(child, {
+        stiffness: 0,
+        damping: 0.3,
+        elasticity: 1,
+        maxAngle: Math.PI / 12,
+        gravity: new THREE.Vector3(0, -0.5, 0),
+        enabled: true
+      });
+      
+      wiggleBones.push(wiggleBone);
+    }
+  });
+  
+  console.log(`Set up ${wiggleBones.length} wiggle bones`);
+}
+
 function updateTitlePosition(audioTime) {
   if (!titleModel) return;
   
   const { startTime, endTime, startZ, endZ } = config.titleGlb.animation;
   
   if (audioTime < startTime) {
-    // Before animation starts, keep at starting position
     titleModel.position.z = startZ;
   } else if (audioTime >= startTime && audioTime <= endTime) {
-    // During animation, interpolate position
     const progress = (audioTime - startTime) / (endTime - startTime);
-    // Use easing for smoother motion
-    const easedProgress = progress * progress * (3 - 2 * progress); // smoothstep
+    const easedProgress = progress * progress * (3 - 2 * progress);
     titleModel.position.z = THREE.MathUtils.lerp(startZ, endZ, easedProgress);
   } else {
-    // After animation ends, keep at end position
     titleModel.position.z = endZ;
   }
 }
@@ -764,7 +735,6 @@ function updateTitlePosition(audioTime) {
 function updateHeadLookAt(camera, deltaTime) {
   if (!headBone || !isAnimating) return;
   
-  // Check for mouse movement
   const mouseMoved = Math.abs(mouseX - lastMouseX) > MOUSE_MOVEMENT_THRESHOLD || 
                      Math.abs(mouseY - lastMouseY) > MOUSE_MOVEMENT_THRESHOLD;
   
@@ -776,29 +746,22 @@ function updateHeadLookAt(camera, deltaTime) {
     mouseInactiveFrames++;
   }
   
-  // Calculate whether we should use mouse look or return to original
   const isMouseActive = mouseInactiveFrames < MOUSE_INACTIVE_THRESHOLD;
   const returnToOriginalProgress = isMouseActive ? 0 : 
-    Math.min((mouseInactiveFrames - MOUSE_INACTIVE_THRESHOLD) / 60, 1); // 1 second transition
+    Math.min((mouseInactiveFrames - MOUSE_INACTIVE_THRESHOLD) / 60, 1);
   
-  // Get normalized mouse position (-1 to 1)
   const normalizedMouseX = -(mouseX / (window.innerWidth * 0.5));
   const normalizedMouseY = -(mouseY / (window.innerHeight * 0.5));
   
-  // Define rotation limits
-  const maxRotationX = Math.PI / 4; // 45 degrees up/down
-  const maxRotationY = Math.PI / 6; // 30 degrees left/right
-  const maxRotationZ = Math.PI / 12; // 15 degrees tilt
+  const maxRotationX = Math.PI / 8;
+  const maxRotationY = Math.PI / 6;
   
-
   const baseRotationOffset = new THREE.Quaternion();
-  baseRotationOffset.setFromEuler(new THREE.Euler(-Math.PI / 5, 0, 0)); // Rotate 90 degrees around X
+  baseRotationOffset.setFromEuler(new THREE.Euler(-Math.PI / 18, 0, 0));
   
-  // Calculate target rotations based on mouse activity
   let targetRotationY, targetRotationX;
   
   if (isMouseActive && returnToOriginalProgress === 0) {
-    // Use mouse-based rotation
     targetRotationY = THREE.MathUtils.clamp(
       -normalizedMouseX * maxRotationY,
       -maxRotationY,
@@ -810,7 +773,6 @@ function updateHeadLookAt(camera, deltaTime) {
       maxRotationX
     );
   } else {
-    // Blend between mouse rotation and original (0,0)
     const mouseRotationY = THREE.MathUtils.clamp(
       -normalizedMouseX * maxRotationY,
       -maxRotationY,
@@ -822,97 +784,69 @@ function updateHeadLookAt(camera, deltaTime) {
       maxRotationX
     );
     
-    // Lerp to original rotation
+    
+
     targetRotationY = THREE.MathUtils.lerp(mouseRotationY, 0, returnToOriginalProgress);
     targetRotationX = THREE.MathUtils.lerp(mouseRotationX, 0, returnToOriginalProgress);
+
+    
   }
   
-  // Create the look rotation
   const lookEuler = new THREE.Euler(targetRotationX, targetRotationY, 0, 'YXZ');
   const lookQuaternion = new THREE.Quaternion();
   lookQuaternion.setFromEuler(lookEuler);
   
-  // Combine base offset with look rotation
   const targetQuaternion = new THREE.Quaternion();
   targetQuaternion.multiplyQuaternions(baseRotationOffset, lookQuaternion);
   
-
-  
-  // Get the current animation quaternion
   const animationQuaternion = headBone.quaternion.clone();
   
-  // Blend between animation and look-at rotation
   const animationInfluence = 0.5;
   const lookAtInfluence = 1 - animationInfluence;
   
-  // Interpolate between animation and look-at
   const blendedQuaternion = new THREE.Quaternion();
   blendedQuaternion.copy(animationQuaternion);
   blendedQuaternion.slerp(targetQuaternion, lookAtInfluence);
   
-  // Smooth interpolation to target - adjust speed based on whether returning to original
-  const smoothingFactor = isMouseActive ? 0.1 : 0.05; // Slower when returning to original
+  const smoothingFactor = isMouseActive ? 0.1 : 0.05;
   headBone.quaternion.slerp(blendedQuaternion, smoothingFactor);
 }
 
 function setupPostProcessing() {
-
   composer = new EffectComposer(renderer);
 
- const taaRenderPass = new TAARenderPass(scene, camera);
+  const taaRenderPass = new TAARenderPass(scene, camera);
   taaRenderPass.unbiased = false;
-  taaRenderPass.sampleLevel = 1; // 0 = 1 sample, 1 = 2 samples, 2 = 4 samples
+  taaRenderPass.sampleLevel = 1;
   composer.addPass(taaRenderPass);
   
-  // Bloom pass
- bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight),
-  config.bloom.strength, 
-  config.bloom.radius, 
-  config.bloom.threshold
-);
-bloomPass.renderTargetsHorizontal.forEach(target => {
-  target.texture.minFilter = THREE.LinearFilter;
-  target.texture.magFilter = THREE.LinearFilter;
-});
-bloomPass.renderTargetsVertical.forEach(target => {
-  target.texture.minFilter = THREE.LinearFilter;
-  target.texture.magFilter = THREE.LinearFilter;
-});
+  bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    config.bloom.strength, 
+    config.bloom.radius, 
+    config.bloom.threshold
+  );
+  bloomPass.renderTargetsHorizontal.forEach(target => {
+    target.texture.minFilter = THREE.LinearFilter;
+    target.texture.magFilter = THREE.LinearFilter;
+  });
+  bloomPass.renderTargetsVertical.forEach(target => {
+    target.texture.minFilter = THREE.LinearFilter;
+    target.texture.magFilter = THREE.LinearFilter;
+  });
   
-  
-  // Displacement pass
-  displacementScenePass = new DisplacementScenePass(renderer, config.displacement.scale);
-  displacementScenePass.initTextSupport(font);
-  displacementScenePass.setTextConfig(config.text);
-  displacementScenePass.setTextMoveSpeed(0.5);
-  displacementScenePass.setTextRemovalZ(5);
-  
-  // Chromatic aberration pass
   chromaticAberrationPass = new ChromaticAberrationPass(config.chromaticAberration.strength);
   chromaticAberrationPass.update(renderer, window.innerWidth, window.innerHeight);
- 
-  composer.addPass(displacementScenePass); // Uncomment if needed
 
-
-
-  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 1.0); // 5.0 = max blur size
-
+  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 1.0);
   depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
 
- const gamma = new ShaderPass(GammaCorrectionShader);
+  const gamma = new ShaderPass(GammaCorrectionShader);
 
-
-
-  composer.addPass(chromaticAberrationPass)
   composer.addPass(depthBlurPass);
+  composer.addPass(chromaticAberrationPass);
   composer.addPass(bloomPass); 
   composer.addPass(gamma);
-  
-
-  
-  
-
 }
 
 function setupLights() {
@@ -937,14 +871,19 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer?.setSize(window.innerWidth, window.innerHeight);
 
-if (rive) {
+  if (rive) {
     rive.resizeDrawingSurfaceToCanvas();
     
-    // Update the width input to match new window width
     if (width) {
       width.value = window.innerWidth; 
     }
   }
+
+  starNestMaterials.forEach(material => {
+  if (material.userData.updateResolution) {
+    material.userData.updateResolution(window.innerWidth, window.innerHeight);
+  }
+});
 
 }
 
@@ -960,45 +899,43 @@ function animate(time) {
 
   const audioTime = AudioController.getCurrentTime();
 
-// UPDATE RIVE PROGRESS
-if (songprogressadd && scrub) {
-  if (scrub.value && !isScrubbing) {
-    isScrubbing = true;
-  } else if (!scrub.value && isScrubbing) {
-    isScrubbing = false;
-    const targetValue = songprogressadd.value;
-    
-    // Set seeking flag
-    isSeekingAudio = true;
-    
-    const duration = AudioController.getAudioDuration();
-    if (duration > 0) {
-      const seekTime = (targetValue / 100) * duration;
-      AudioController.seekTo(seekTime);
-    }
-    
-    // Clear seeking flag after a brief delay
-    setTimeout(() => {
-      isSeekingAudio = false;
-    }, 50);
-  }
-  
-  // Only update progress when NOT scrubbing AND NOT seeking
-  if (!isScrubbing && !isSeekingAudio) {
-    const duration = AudioController.getAudioDuration();
-    if (duration > 0) {
-      const progress = (audioTime / duration) * 100;
-      songprogressadd.value = progress;
-    } else {
-      songprogressadd.value = 0;
-    }
-  }
-}
 
-  // Update title position based on audio time
+  
+
+  // Update Rive progress
+  if (songprogressadd && scrub) {
+    if (scrub.value && !isScrubbing) {
+      isScrubbing = true;
+    } else if (!scrub.value && isScrubbing) {
+      isScrubbing = false;
+      const targetValue = songprogressadd.value;
+      
+      isSeekingAudio = true;
+      
+      const duration = AudioController.getAudioDuration();
+      if (duration > 0) {
+        const seekTime = (targetValue / 100) * duration;
+        AudioController.seekTo(seekTime);
+      }
+      
+      setTimeout(() => {
+        isSeekingAudio = false;
+      }, 50);
+    }
+    
+    if (!isScrubbing && !isSeekingAudio) {
+      const duration = AudioController.getAudioDuration();
+      if (duration > 0) {
+        const progress = (audioTime / duration) * 100;
+        songprogressadd.value = progress;
+      } else {
+        songprogressadd.value = 0;
+      }
+    }
+  }
+
   updateTitlePosition(audioTime);
 
-    // Update text manager
   if (textManager) {
     textManager.update(
       AudioController.getCurrentTime(), 
@@ -1011,140 +948,128 @@ if (songprogressadd && scrub) {
   
   const vegetationCounts = VegetationManager.updateVegetation(scene, 0.5 * (deltaTime * 60));
   AudioController.update(deltaTime, vegetationCounts.trees);
-  
-  if (displacementScenePass) {
-    displacementScenePass.update(renderer, time, AudioController.getCurrentTime(), 
-      deltaTime, textAppearTimes, config.displacement.scale);
-  }
 
   // Handle animation transitions
   if (faceUpAnimation && walkAnimation) {
-    // Check if we should be in faceUp state (after transition time)
     const shouldBeInFaceUp = audioTime >= transitionTime;
-    const shouldBeTransitioning = audioTime >= transitionTime && audioTime < (transitionTime + transitionDuration);
     
-    if (shouldBeTransitioning && !hasTransitioned && !isInTransition) {
-      // Start transition
-      hasTransitioned = true;
-      isInTransition = true;
-      transitionStartTime = audioTime;
-      
-      // Reset and play faceUp animation
-      faceUpAnimation.reset();
-      faceUpAnimation.play();
-      faceUpAnimation.setEffectiveWeight(0.0);
-      walkAnimation.setEffectiveWeight(1.0);
-    } else if (isInTransition && shouldBeTransitioning) {
-      // Continue transition - calculate progress
-      const transitionProgress = Math.min((audioTime - transitionStartTime) / transitionDuration, 1.0);
-      
-      // Smooth easing function
-      const easedProgress = 0.5 - 0.5 * Math.cos(transitionProgress * Math.PI);
-      
-      walkAnimation.setEffectiveWeight(1.0 - easedProgress);
-      faceUpAnimation.setEffectiveWeight(easedProgress);
-      
-      if (transitionProgress >= 1.0) {
-        isInTransition = false;
-      }
-    } else if (isInTransition && shouldBeInFaceUp && !shouldBeTransitioning) {
-      // Continue quick transition after jump - use half duration
-      const quickTransitionDuration = transitionDuration / 2;
-      const transitionProgress = Math.min((audioTime - transitionStartTime) / quickTransitionDuration, 1.0);
-      
-      // Smooth easing function
-      const easedProgress = 0.5 - 0.5 * Math.cos(transitionProgress * Math.PI);
-      
-      walkAnimation.setEffectiveWeight(1.0 - easedProgress);
-      faceUpAnimation.setEffectiveWeight(easedProgress);
-      
-      if (transitionProgress >= 1.0) {
-        isInTransition = false;
-      }
-    } else if (shouldBeInFaceUp && !shouldBeTransitioning && !hasTransitioned) {
-      // We jumped past the transition time - check if we need to transition
-      const walkWeight = walkAnimation.getEffectiveWeight();
-      const faceUpWeight = faceUpAnimation.getEffectiveWeight();
-      
-      // Only start transition if walk animation is active (weight > 0)
-      if (walkWeight > 0 && faceUpWeight < 1) {
-        // Start a quick transition from walk to faceUp
+    if (!faceUpAnimation.userData) {
+      faceUpAnimation.userData = { lastAudioTime: 0 };
+    }
+    
+    const lastAudioTime = faceUpAnimation.userData.lastAudioTime || 0;
+    const timeDelta = Math.abs(audioTime - lastAudioTime);
+    const isScrubbing = timeDelta > 0.5;
+    faceUpAnimation.userData.lastAudioTime = audioTime;
+    
+    if (shouldBeInFaceUp) {
+      if (isScrubbing) {
+        if (!hasTransitioned || walkAnimation.getEffectiveWeight() > 0) {
+          walkAnimation.setEffectiveWeight(0.0);
+          faceUpAnimation.stop();
+          faceUpAnimation.reset();
+          faceUpAnimation.play();
+          faceUpAnimation.setEffectiveWeight(1.0);
+          
+          const animTime = (audioTime - transitionTime) * faceUpAnimation.timeScale;
+          if (animTime > 0) {
+            faceUpAnimation.time = Math.min(animTime, faceUpAnimation.getClip().duration);
+          }
+          
+          hasTransitioned = true;
+          isInTransition = false;
+        }
+      } else if (!hasTransitioned && !isInTransition) {
         hasTransitioned = true;
         isInTransition = true;
         transitionStartTime = audioTime;
         
-        // Reset and play faceUp animation
         faceUpAnimation.reset();
         faceUpAnimation.play();
         faceUpAnimation.setEffectiveWeight(0.0);
+      } else if (isInTransition) {
+        const transitionProgress = Math.min((audioTime - transitionStartTime) / transitionDuration, 1.0);
+        const easedProgress = 0.5 - 0.5 * Math.cos(transitionProgress * Math.PI);
+        
+        walkAnimation.setEffectiveWeight(1.0 - easedProgress);
+        faceUpAnimation.setEffectiveWeight(easedProgress);
+        
+        if (transitionProgress >= 1.0) {
+          isInTransition = false;
+        }
+      }
+    } else {
+      if (hasTransitioned || isInTransition) {
+        hasTransitioned = false;
+        isInTransition = false;
+        transitionStartTime = null;
+        
+        faceUpAnimation.stop();
+        faceUpAnimation.reset();
+        faceUpAnimation.setEffectiveWeight(0.0);
+        
+        if (!walkAnimation.isRunning()) {
+          walkAnimation.reset();
+          walkAnimation.play();
+        }
         walkAnimation.setEffectiveWeight(1.0);
-      } else if (faceUpWeight === 1) {
-        // Already in faceUp, just update state
-        hasTransitioned = true;
-        isInTransition = false;
-      }
-    } else if (shouldBeInFaceUp && !shouldBeTransitioning && hasTransitioned) {
-      // We're past the transition, ensure faceUp is fully active
-      if (isInTransition) {
-        isInTransition = false;
-      }
-      walkAnimation.setEffectiveWeight(0.0);
-      faceUpAnimation.setEffectiveWeight(1.0);
-    } else if (!shouldBeInFaceUp && (hasTransitioned || isInTransition)) {
-      // We've scrubbed back before the transition point
-      hasTransitioned = false;
-      isInTransition = false;
-      transitionStartTime = null;
-      
-      // Stop faceUp and ensure walk is playing
-      faceUpAnimation.stop();
-      faceUpAnimation.reset();
-      faceUpAnimation.setEffectiveWeight(0.0);
-      
-      // Reset walk animation to ensure proper speed
-      if (!walkAnimation.isRunning()) {
-        walkAnimation.reset();
-        walkAnimation.play();
-      }
-      walkAnimation.setEffectiveWeight(1.0);
-      walkAnimation.timeScale = 0.7; // Ensure correct time scale
-    } else if (!shouldBeInFaceUp && !hasTransitioned) {
-      // We're before the transition and haven't transitioned yet
-      // Ensure walk animation is at correct speed
-      if (walkAnimation.isRunning() && walkAnimation.timeScale !== 0.7) {
         walkAnimation.timeScale = 0.7;
       }
     }
   }
 
+  // Update head tracking first
   updateHeadLookAt(camera, deltaTime);
 
+  // Update wiggle bones after head tracking
+  // wiggleBones.forEach(bone => {
+  //   if (bone && bone.update) {
+  //     bone.update(deltaTime);
+  //   }
+  // });
   
+
   
-  // Camera animation based on audio time (rest of the code remains the same)
-  const startPos = new THREE.Vector3(0, 2, 0);
-  const endPos = new THREE.Vector3(0, 4, -70);
+  // Update global camera position and rotation variables
+ if (audioTime < animStartTime) {
+  baseCameraPos.copy(startPos);
+  baseCameraRot.copy(startRot);
+  scene.fog.near = config.fog.start.near;
+  scene.fog.far = config.fog.start.far;
+  scene.fog.color.copy(fogStartColor);
   
-  const startRot = new THREE.Euler(0, 0, 0);
-  const endRot = new THREE.Euler(0.5, 0, 0);
+  // Set initial FOV
+  camera.fov = startFOV;
+  camera.updateProjectionMatrix();
   
-  // Calculate base camera position/rotation based on audio time
-  let baseCameraPos = new THREE.Vector3();
-  let baseCameraRot = new THREE.Euler();
+} else if (audioTime >= animStartTime && audioTime <= animEndTime) {
+  const progress = (audioTime - animStartTime) / (animEndTime - animStartTime);
+  const easedProgress = progress * progress * (3 - 2 * progress);
   
-  if (audioTime < animStartTime) {
-    baseCameraPos.copy(startPos);
-    baseCameraRot.copy(startRot);
-  } else if (audioTime >= animStartTime && audioTime <= animEndTime) {
-    const progress = (audioTime - animStartTime) / (animEndTime - animStartTime);
-    baseCameraPos.lerpVectors(startPos, endPos, progress);
-    baseCameraRot.x = THREE.MathUtils.lerp(startRot.x, endRot.x, progress);
-    baseCameraRot.y = THREE.MathUtils.lerp(startRot.y, endRot.y, progress);
-    baseCameraRot.z = THREE.MathUtils.lerp(startRot.z, endRot.z, progress);
-  } else {
-    baseCameraPos.copy(endPos);
-    baseCameraRot.copy(endRot);
-  }
+  baseCameraPos.lerpVectors(startPos, endPos, easedProgress);
+  baseCameraRot.x = THREE.MathUtils.lerp(startRot.x, endRot.x, easedProgress);
+  baseCameraRot.y = THREE.MathUtils.lerp(startRot.y, endRot.y, easedProgress);
+  baseCameraRot.z = THREE.MathUtils.lerp(startRot.z, endRot.z, easedProgress);
+  
+  scene.fog.near = THREE.MathUtils.lerp(config.fog.start.near, config.fog.end.near, easedProgress);
+  scene.fog.far = THREE.MathUtils.lerp(config.fog.start.far, config.fog.end.far, easedProgress);
+  scene.fog.color.lerpColors(fogStartColor, fogEndColor, easedProgress);
+  
+  // Animate FOV
+  camera.fov = THREE.MathUtils.lerp(startFOV, endFOV, easedProgress);
+  camera.updateProjectionMatrix();
+  
+} else {
+  baseCameraPos.copy(endPos);
+  baseCameraRot.copy(endRot);
+  scene.fog.near = config.fog.end.near;
+  scene.fog.far = config.fog.end.far;
+  scene.fog.color.copy(fogEndColor);
+  
+  // Set final FOV
+  camera.fov = endFOV;
+  camera.updateProjectionMatrix();
+}
   
   camera.position.copy(baseCameraPos);
   
@@ -1168,6 +1093,9 @@ if (songprogressadd && scrub) {
   cursorPlane.update(camera, deltaTime);
   
   if (scene && camera) composer.render();
+
+  updateStarNestMaterials(starNestMaterials, deltaTime, mouseX, mouseY, audioTime);
+  
 }
 
 function startAnimation() {
@@ -1203,9 +1131,10 @@ function pauseAnimation() {
   }
 }
 
+// Initialize after delay
 setTimeout(() => {
   init();
 }, 1000);
-// Initialize
 
+// Exports
 export { scene, gltfModel, gltfMixer, gltfAnimationActions };

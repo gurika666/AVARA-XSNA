@@ -6,7 +6,7 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
  * Custom shader pass that uses a separate scene with rotating cube and text as displacement map
  */
 class DisplacementScenePass extends ShaderPass {
-  constructor(renderer, displacementScale = 0.1) {
+  constructor(renderer, displacementScale = 10.1) {
     // Define the shader
     const shader = {
       uniforms: {
