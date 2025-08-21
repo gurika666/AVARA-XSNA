@@ -67,6 +67,18 @@ body {
   mix-blend-mode: overlay;
   animation: scanlines-move 2s linear infinite;
 }
+/* Mobile scanlines - 2px spacing */
+@media (max-width: 768px) {
+  .scanlines {
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(255, 0, 0, 0.1),
+      rgb(255, 255, 255) 1px,
+      transparent 4px,
+      transparent 4px
+    );
+  }
+}
 
 @keyframes scanlines-move {
   0% {

@@ -22,12 +22,25 @@ import {
 } from './shader-manager.js';
 
 // Import other modules
-import * as AudioController from './audio-controller.js';
+import * as AudioController from './audioController.js';
 import * as VegetationManager from './vegetation-manager.js';
 import * as LoadingManager from './loading-manager.js';
 import { DepthDrivenBlurPass } from './custom-dof.js';
 import { TextManager } from './TextManager.js';
 import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-app/webgl2';
+
+// Simple mobile detection - runs immediately
+window.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                  (window.innerWidth <= 768);
+
+// // Add class to body
+// if (window.isMobile) {
+//   document.body.classList.add('mobile');
+//   console.log("mobile")
+// } else {
+//   document.body.classList.add('desktop');
+//   console.log("destop")
+// }
 
 let depthBlurPass;
 let riveOverlay;
@@ -189,6 +202,12 @@ async function init() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.outputEncoding = THREE.sRGBEncoding;
+
+  const pixelRatio = window.isMobile ? 0.7 : 1;
+  renderer.setPixelRatio(pixelRatio);
+
+  console.log(window.isMobile)
+
   renderer.setSize(window.innerWidth, window.innerHeight);
   
   scene = new THREE.Scene();
@@ -841,6 +860,10 @@ function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
   }
+
+  const pixelRatio = window.isMobile ? 0.5 : 1;
+  renderer.setPixelRatio(pixelRatio);
+
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer?.setSize(window.innerWidth, window.innerHeight);
 
