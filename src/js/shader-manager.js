@@ -1,14 +1,17 @@
-// shader-manager.js - Consolidated shader utilities with all shaders
+// shader-manager.js - Simplified star shader with colored dots
 import * as THREE from 'three';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 
+// SIMPLE QUALITY CONTROL
+export const SHADER_QUALITY = 1.0; // Increased back to normal since we simplified the shader
+
 // Shader definitions
 const shaders = {
-  // Chromatic Aberration Shader
+  // Chromatic Aberration Shader (unchanged)
   chromaticAberration: {
     uniforms: {
       tDiffuse: { value: null },
-      resolution: { value: new THREE.Vector2(128, 128) },
+      resolution: { value: new THREE.Vector2(128 * SHADER_QUALITY, 128 * SHADER_QUALITY) },
       aberrationStrength: { value: 10.1 },
       brightnessThreshold: { value: 0.001 }
     },
@@ -56,7 +59,7 @@ const shaders = {
       }`
   },
 
-  // Cursor Plane Shader
+  // Cursor Plane Shader (unchanged)
   cursorPlane: {
     uniforms: {
       uMouse: { value: new THREE.Vector2(0.5, 0.5) },
@@ -129,11 +132,11 @@ const shaders = {
       }`
   },
 
-  // Sky/Cloud Shader
+  // Sky/Cloud Shader (unchanged)
   skyCloud: {
     uniforms: {
       time: { value: 0.0 },
-      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      resolution: { value: new THREE.Vector2(window.innerWidth * SHADER_QUALITY, window.innerHeight * SHADER_QUALITY) },
       cloudColor: { value: new THREE.Vector3(1, 1, 1) },
       skyTopColor: { value: new THREE.Vector3(0.09, 0.45, 0.9) },
       skyBottomColor: { value: new THREE.Vector3(0, 0.45, 0.7) }
@@ -220,7 +223,7 @@ const shaders = {
   }
 };
 
-// Shader Pass Classes
+// Shader Pass Classes (unchanged)
 class ChromaticAberrationPass extends ShaderPass {
   constructor(strength = 0.01, threshold = 0.5) {
     super(shaders.chromaticAberration);
@@ -229,13 +232,13 @@ class ChromaticAberrationPass extends ShaderPass {
   }
   
   update(renderer, width, height, strength, threshold) {
-    if (width && height) this.uniforms.resolution.value.set(width, height);
+    if (width && height) this.uniforms.resolution.value.set(width * SHADER_QUALITY, height * SHADER_QUALITY);
     if (strength !== undefined) this.uniforms.aberrationStrength.value = strength;
     if (threshold !== undefined) this.uniforms.brightnessThreshold.value = threshold;
   }
 }
 
-// Cursor Plane Manager
+// Cursor Plane Manager (unchanged)
 class CursorPlane {
   constructor() {
     this.plane = null;
@@ -276,7 +279,7 @@ class CursorPlane {
 
   updateViewport() {
     if (this.material) {
-      this.material.uniforms.uViewportSize.value.set(window.innerWidth, window.innerHeight);
+      this.material.uniforms.uViewportSize.value.set(window.innerWidth * SHADER_QUALITY, window.innerHeight * SHADER_QUALITY);
     }
   }
 
@@ -297,7 +300,7 @@ class CursorPlane {
   }
 }
 
-// Sky/Cloud Plane Factory
+// Sky/Cloud Plane Factory (unchanged)
 function createSkyPlane(options = {}) {
   const { width = 10, height = 10, position = new THREE.Vector3(0, 0, -5), 
           rotation = new THREE.Euler(0, 0, 0), colors = {} } = options;
@@ -307,7 +310,6 @@ function createSkyPlane(options = {}) {
     transparent: true
   });
   
-  // Set colors if provided
   ['cloudColor', 'skyTopColor', 'skyBottomColor'].forEach(key => {
     if (colors[key]) {
       const c = colors[key] instanceof THREE.Color ? colors[key] : new THREE.Color(colors[key]);
@@ -321,15 +323,19 @@ function createSkyPlane(options = {}) {
   return mesh;
 }
 
-// Update cloud uniforms helper
+// Update cloud uniforms helper (unchanged)
 function updateCloudUniforms(material, time, width, height) {
   if (material?.uniforms) {
     material.uniforms.time.value = time;
-    material.uniforms.resolution.value.set(width, height);
+    material.uniforms.resolution.value.set(width * SHADER_QUALITY, height * SHADER_QUALITY);
   }
 }
 
-// Star Nest Material Class
+
+
+
+
+// ENHANCED Star Nest Material Class with VIBRANT COLORFUL NEBULA
 class StarNestMaterial extends THREE.MeshPhysicalMaterial {
   constructor(options = {}) {
     const {
@@ -337,20 +343,19 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
       roughness = 0.5,
       envMapIntensity = 0.15,
       velocity = 0.025,
-      starGlow = 1.055,
-      starSize = 10.0,
-      canvasView = 10.0,
-      numStars = 50.0,
-      numLayers = 8.0,
-      swirlSpeed = 1.1,
-      swirlAmount = 1.0,
+      numStars = 80.0,
+      starSize = 0.02,
+      glowIntensity = 1.0,
+      glowRadius = 3.0,
+      enableSpikes = true,
+      spikeTwinkleSpeed = 3.0,
       maskTexture = null,
-      maskIntensity = 1.0,
-      nebulaIntensity = 0.4,
-      nebulaScale = 2.5,
-      nebulaColor1 = new THREE.Vector3(0.5, 0.2, 0.8),
-      nebulaColor2 = new THREE.Vector3(0.2, 0.4, 0.9),
-      nebulaSpeed = 0.15
+      // MORE VIBRANT DEFAULT COLORS
+      nebulaColor1 = new THREE.Vector3(0.9, 0.3, 0.6),  // Bright pink-magenta
+      nebulaColor2 = new THREE.Vector3(0.2, 0.6, 1.0),  // Bright cyan-blue
+      nebulaColor3 = new THREE.Vector3(1.0, 0.5, 0.2),  // Orange-gold (NEW)
+      nebulaIntensity = 0.8,  // NEW: Overall nebula brightness (0.3 to 1.5)
+      nebulaSaturation = 1.5, // NEW: Color saturation boost (1.0 to 2.0)
     } = options;
 
     super({
@@ -358,26 +363,23 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
       metalness,
       roughness,
       envMapIntensity,
-      side: THREE.DoubleSide
     });
 
     // Store options
     this.starNestOptions = {
       velocity,
-      starGlow,
-      starSize,
-      canvasView,
       numStars,
-      numLayers,
-      swirlSpeed,
-      swirlAmount,
+      starSize,
+      glowIntensity,
+      glowRadius,
+      enableSpikes,
+      spikeTwinkleSpeed,
       maskTexture,
-      maskIntensity,
-      nebulaIntensity,
-      nebulaScale,
       nebulaColor1,
       nebulaColor2,
-      nebulaSpeed
+      nebulaColor3,
+      nebulaIntensity,
+      nebulaSaturation
     };
 
     // Create default white texture for when no mask is provided
@@ -408,20 +410,20 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
       shader.uniforms.resolution = { value: new THREE.Vector2(window.innerWidth, window.innerHeight) };
       shader.uniforms.mouse = { value: new THREE.Vector2(window.innerWidth * 0.5, window.innerHeight * 0.5) };
       shader.uniforms.velocity = { value: options.velocity };
-      shader.uniforms.starGlow = { value: options.starGlow };
-      shader.uniforms.starSize = { value: options.starSize };
-      shader.uniforms.canvasView = { value: options.canvasView };
       shader.uniforms.numStars = { value: options.numStars };
-      shader.uniforms.numLayers = { value: options.numLayers };
-      shader.uniforms.swirlSpeed = { value: options.swirlSpeed };
-      shader.uniforms.swirlAmount = { value: options.swirlAmount };
+      shader.uniforms.starSize = { value: options.starSize };
+      shader.uniforms.glowIntensity = { value: options.glowIntensity };
+      shader.uniforms.glowRadius = { value: options.glowRadius };
+      shader.uniforms.enableSpikes = { value: options.enableSpikes ? 1.0 : 0.0 };
+      shader.uniforms.spikeTwinkleSpeed = { value: options.spikeTwinkleSpeed };
+      shader.uniforms.swirlAmount = { value: 2.5 };
+      shader.uniforms.swirlSpeed = { value: 1.3 };
       shader.uniforms.maskTexture = { value: maskTex };
-      shader.uniforms.maskIntensity = { value: options.maskIntensity };
-      shader.uniforms.nebulaIntensity = { value: options.nebulaIntensity };
-      shader.uniforms.nebulaScale = { value: options.nebulaScale };
       shader.uniforms.nebulaColor1 = { value: options.nebulaColor1 };
       shader.uniforms.nebulaColor2 = { value: options.nebulaColor2 };
-      shader.uniforms.nebulaSpeed = { value: options.nebulaSpeed };
+      shader.uniforms.nebulaColor3 = { value: options.nebulaColor3 };
+      shader.uniforms.nebulaIntensity = { value: options.nebulaIntensity };
+      shader.uniforms.nebulaSaturation = { value: options.nebulaSaturation };
 
       // Store uniforms reference
       this.userData.uniforms = shader.uniforms;
@@ -442,7 +444,7 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
         vUv = uv;`
       );
 
-      // Add star nest fragment shader code
+      // Enhanced star fragment shader with COLORFUL NEBULA
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <common>',
         `#include <common>
@@ -451,249 +453,387 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
         uniform vec2 resolution;
         uniform vec2 mouse;
         uniform float velocity;
-        uniform float starGlow;
-        uniform float starSize;
-        uniform float canvasView;
         uniform float numStars;
-        uniform float numLayers;
-        uniform float swirlSpeed;
+        uniform float starSize;
+        uniform float glowIntensity;
+        uniform float glowRadius;
+        uniform float enableSpikes;
+        uniform float spikeTwinkleSpeed;
         uniform float swirlAmount;
+        uniform float swirlSpeed;
         uniform sampler2D maskTexture;
-        uniform float maskIntensity;
-        uniform float nebulaIntensity;
-        uniform float nebulaScale;
         uniform vec3 nebulaColor1;
         uniform vec3 nebulaColor2;
-        uniform float nebulaSpeed;
+        uniform vec3 nebulaColor3;
+        uniform float nebulaIntensity;
+        uniform float nebulaSaturation;
         
         varying vec2 vScreenPosition;
         varying vec2 vUv;
         
-        #define TAU 6.28318
-        
-        // 3D Noise functions for nebula
-        vec3 mod289(vec3 x) {
-            return x - floor(x * (1.0 / 289.0)) * 289.0;
-        }
-        
-        vec4 mod289(vec4 x) {
-            return x - floor(x * (1.0 / 289.0)) * 289.0;
-        }
-        
-        vec4 permute(vec4 x) {
-            return mod289(((x*34.0)+1.0)*x);
-        }
-        
-        vec4 taylorInvSqrt(vec4 r) {
-            return 1.79284291400159 - 0.85373472095314 * r;
-        }
-        
-        float snoise(vec3 v) {
-            const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-            const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-            
-            vec3 i = floor(v + dot(v, C.yyy));
-            vec3 x0 = v - i + dot(i, C.xxx);
-            
-            vec3 g = step(x0.yzx, x0.xyz);
-            vec3 l = 1.0 - g;
-            vec3 i1 = min(g.xyz, l.zxy);
-            vec3 i2 = max(g.xyz, l.zxy);
-            
-            vec3 x1 = x0 - i1 + C.xxx;
-            vec3 x2 = x0 - i2 + C.yyy;
-            vec3 x3 = x0 - D.yyy;
-            
-            i = mod289(i);
-            vec4 p = permute(permute(permute(
-                i.z + vec4(0.0, i1.z, i2.z, 1.0))
-                + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-                + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-                
-            float n_ = 0.142857142857;
-            vec3 ns = n_ * D.wyz - D.xzx;
-            
-            vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-            
-            vec4 x_ = floor(j * ns.z);
-            vec4 y_ = floor(j - 7.0 * x_);
-            
-            vec4 x = x_ *ns.x + ns.yyyy;
-            vec4 y = y_ *ns.x + ns.yyyy;
-            vec4 h = 1.0 - abs(x) - abs(y);
-            
-            vec4 b0 = vec4(x.xy, y.xy);
-            vec4 b1 = vec4(x.zw, y.zw);
-            
-            vec4 s0 = floor(b0)*2.0 + 1.0;
-            vec4 s1 = floor(b1)*2.0 + 1.0;
-            vec4 sh = -step(h, vec4(0.0));
-            
-            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
-            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
-            
-            vec3 p0 = vec3(a0.xy,h.x);
-            vec3 p1 = vec3(a0.zw,h.y);
-            vec3 p2 = vec3(a1.xy,h.z);
-            vec3 p3 = vec3(a1.zw,h.w);
-            
-            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
-            p0 *= norm.x;
-            p1 *= norm.y;
-            p2 *= norm.z;
-            p3 *= norm.w;
-            
-            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-            m = m * m;
-            return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-        }
-        
-        float fbm(vec3 p, int octaves, float lacunarity, float gain) {
-            float value = 0.0;
-            float amplitude = 0.5;
-            float frequency = 1.0;
-            
-            for(int i = 0; i < octaves; i++) {
-                value += amplitude * snoise(p * frequency);
-                frequency *= lacunarity;
-                amplitude *= gain;
-            }
-            
-            return value;
-        }
-        
-        vec3 nebulaLayer(vec2 uv, float depth, float layerTime, vec3 color1, vec3 color2) {
-            float scale = mix(nebulaScale, nebulaScale * 0.3, depth);
-            vec3 pos = vec3(uv * scale, layerTime);
-            
-            float noise1 = fbm(pos, 4, 2.0, 0.5);
-            float noise2 = fbm(pos * 2.3 + vec3(100.0), 3, 2.5, 0.6);
-            
-            float nebulaDensity = noise1 * 0.7 + noise2 * 0.3;
-            nebulaDensity = smoothstep(-0.5, 0.8, nebulaDensity);
-            
-            vec3 nebulaColor = mix(color1, color2, noise2 * 0.5 + 0.5);
-            
-            float brightSpots = pow(max(0.0, noise1), 3.0) * 2.0;
-            nebulaColor += vec3(brightSpots) * 0.3;
-            
-            float depthFade = 1.0 - depth * 0.5;
-            
-            return nebulaColor * nebulaDensity * depthFade * nebulaIntensity;
-        }
-        
-        float Star(vec2 uv, float flare, float size) {
-            float d = length(uv);
-            float m = sin(starGlow * 1.2) / d * 0.5 * size;
-            float rays = max(0., 0.5 - abs(uv.x * uv.y * 1000.)) * 0.3;
-            m += (rays * flare) * 2. * size;
-            m *= smoothstep(1., 0.1 * size, d);
-            return m;
-        }
-        
-        float Hash21(vec2 p) {
+        // Simple hash function for randomness
+        float hash(vec2 p) {
             p = fract(p * vec2(123.34, 456.21));
             p += dot(p, p + 45.32);
             return fract(p.x * p.y);
         }
         
-        mat2 rot2D(float angle) {
+        // Simple 2D rotation
+        vec2 rotate2D(vec2 p, float angle) {
             float s = sin(angle);
             float c = cos(angle);
-            return mat2(c, -s, s, c);
+            return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
         }
         
-        vec3 StarLayer(vec2 uv, float density) {
-            vec3 col = vec3(0);
+        // Simplified 2D noise for nebula (much faster than 3D simplex)
+        float simpleNoise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
             
-            float gridScale = 100.0 / max(1.0, density);
-            uv *= gridScale;
+            // Four corners
+            float a = hash(i);
+            float b = hash(i + vec2(1.0, 0.0));
+            float c = hash(i + vec2(0.0, 1.0));
+            float d = hash(i + vec2(1.0, 1.0));
             
-            vec2 gv = fract(uv);
-            vec2 id = floor(uv);
+            // Smooth interpolation
+            vec2 u = f * f * (3.0 - 2.0 * f);
             
-            float starProbability = density / 100.0;
+            return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+        }
+        
+        // Simple fractal noise (2 octaves only for performance)
+        float simpleFBM(vec2 p) {
+            float value = 0.0;
+            float amplitude = 0.5;
             
-            for(int y = -1; y <= 1; y++) {
-                for(int x = -1; x <= 1; x++) {
-                    vec2 offs = vec2(float(x), float(y));
-                    float n = Hash21(id + offs);
-                    
-                    if(n > starProbability) continue;
-                    
-                    float size = fract(n * 43.758) * 0.5 + 0.5;
-                    float starScale = starSize / 10.0;
-                    
-                    float star = Star(
-                        gv - offs - vec2(n, fract(n * 34.)) + 0.5, 
-                        smoothstep(0.1, 0.9, size) * 0.46,
-                        starScale
-                    );
-                    
-                    float w = n * 1000.0;
-                    vec3 color = (cos(w + vec3(0.0, 1.0, 2.0)) + 1.0) * 0.5;
-                    
-                    float brightness = exp(cos(w * 0.1) * 0.6);
-                    color *= brightness * 1.2;
-                    
-                    star *= sin(time * 0.6 + n * TAU) * 0.5 + 0.5;
-                    star *= 0.5;
-                    col += star * size * color;
-                }
+            value += simpleNoise(p) * amplitude;
+            p *= 5.0;
+            amplitude *= 0.2;
+            
+            value += simpleNoise(p) * amplitude;
+            
+            return value;
+        }
+        
+        // Enhanced glow function with PROPERLY TWINKLING SPIKES
+        float calculateStarGlow(vec2 pos, float coreSize, float glowSize, float spikeLength, float twinkle, float animTime) {
+            float dist = length(pos);
+            
+            // Softer core with smoother falloff
+            float core = 1.0 - smoothstep(0.0, coreSize * 1.5, dist);
+            core = pow(core, 1.5); // Softer power curve
+            
+            // Much softer, more gradual glow
+            float glow = 1.0 - smoothstep(coreSize * 0.5, glowSize * 2.0, dist);
+            glow = pow(glow, 3.5); // Higher power for softer falloff
+            
+            // Additional soft outer halo
+            float outerHalo = 1.0 - smoothstep(glowSize * 0.5, glowSize * 3.0, dist);
+            outerHalo = pow(outerHalo, 5.0); // Very soft outer edge
+            
+            // PROPERLY ANIMATED TWINKLING 4-SIDED SPIKES
+            float spikes = 0.0;
+            
+            // Calculate twinkle animation (moved here for proper animation)
+            float twinklePhase = sin(animTime + twinkle * 6.28) * 0.5 + 0.5; // 0 to 1 range
+            float spikeBrightness = 0.1 + twinklePhase * 0.9; // 30% to 100% brightness
+            
+            // Horizontal spike (along X axis) - length varies by spikeLength parameter
+            if(abs(pos.y) < coreSize * 3.0) {
+                float hSpike = exp(-abs(pos.x) / (glowSize * spikeLength)) * exp(-abs(pos.y) * 3.0 / coreSize);
+                hSpike *= 1.0 - smoothstep(0.0, glowSize * spikeLength * 4.0, abs(pos.x));
+                spikes += hSpike * spikeBrightness; // Apply animated brightness
             }
-            return col;
+            
+            // Vertical spike (along Y axis)
+            if(abs(pos.x) < coreSize * 3.0) {
+                float vSpike = exp(-abs(pos.y) / (glowSize * spikeLength)) * exp(-abs(pos.x) * 3.0 / coreSize);
+                vSpike *= 1.0 - smoothstep(0.0, glowSize * spikeLength * 4.0, abs(pos.y));
+                spikes += vSpike * spikeBrightness; // Apply animated brightness
+            }
+            
+            // Combine all components with softer blending
+            return core * 0.8 + glow * 0.3 + outerHalo * 0.2 + spikes * 0.4;
         }
         
-        vec3 getStarField() {
+        // Saturation adjustment function
+        vec3 adjustSaturation(vec3 color, float saturation) {
+            float gray = dot(color, vec3(0.299, 0.587, 0.114));
+            return mix(vec3(gray), color, saturation);
+        }
+        
+        vec3 getSimpleStarField() {
             vec2 fragCoord = (vScreenPosition * 0.5 + 0.5) * resolution;
             vec2 uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
             
-            vec2 M = vec2(0);
-            M -= vec2(M.x + sin(time * 0.022), M.y - cos(time * 0.022));
-            M += (mouse.xy - resolution.xy * 0.5) / resolution.y;
+            // Simple mouse influence
+            vec2 M = (mouse.xy - resolution.xy * 0.5) / resolution.y * 0.2;
             
             float t = time * velocity;
             vec3 col = vec3(0);
             
-            // Add nebula layers
-            vec2 nebula1UV = uv + M * 0.1;
-            vec3 nebula1 = nebulaLayer(nebula1UV, 0.9, t * nebulaSpeed * 0.7, nebulaColor1, nebulaColor2);
+            // ENHANCED COLORFUL NEBULA LAYERS
+            // Layer 1: Main nebula cloud with color variation
+            vec2 nebulaUV1 = uv * 2.5 + M * 0.3;
+            float nebula1 = simpleFBM(nebulaUV1 + vec2(t * 0.05, t * 0.03));
+            float nebula1Raw = nebula1; // Keep raw value for color mixing
+            nebula1 = smoothstep(0.15, 0.85, nebula1); // Wider range for more variation
             
-            vec2 nebula2UV = uv + M * 0.2;
-            vec3 nebula2 = nebulaLayer(nebula2UV, 0.6, t * nebulaSpeed, nebulaColor2 * 0.8, nebulaColor1 * 1.2);
+            // Layer 2: Secondary nebula with different movement
+            vec2 nebulaUV2 = uv * 3.0 - M * 0.2;
+            float nebula2 = simpleFBM(nebulaUV2 + vec2(-t * 0.04, t * 0.06));
+            float nebula2Raw = nebula2;
+            nebula2 = smoothstep(0.25, 0.75, nebula2);
             
-            col += (nebula1 * 4.0) + (nebula2 * 4.0) * 0.7;
+            // Layer 3: Fine detail nebula for color variation
+            vec2 nebulaUV3 = uv * 5.0 + M * 0.1;
+            float nebula3 = simpleFBM(nebulaUV3 + vec2(t * 0.02, -t * 0.08));
+            nebula3 = smoothstep(0.3, 0.7, nebula3);
             
-            // Add star layers
-            float maxLayers = min(10.0, max(1.0, numLayers));
-            float layerStep = 1.0 / maxLayers;
+            // Create complex color variations
+            // Use three colors for more variety
+            vec3 nebulaCol = vec3(0.0);
             
-            for(float i = 0.; i < 1.0; i += 0.1) {
-                if(i >= maxLayers * layerStep) break;
+            // Mix colors based on different noise patterns
+            float colorMix1 = sin(nebula1Raw * 3.14159 + t * 0.1) * 0.5 + 0.5;
+            float colorMix2 = cos(nebula2Raw * 3.14159 * 1.5 - t * 0.15) * 0.5 + 0.5;
+            
+            // Create primary nebula color with smooth gradients
+            vec3 primaryColor = mix(nebulaColor1, nebulaColor2, colorMix1);
+            vec3 secondaryColor = mix(nebulaColor2, nebulaColor3, colorMix2);
+            
+            // Blend the colors based on nebula density
+            nebulaCol = mix(primaryColor, secondaryColor, nebula3 * 0.7);
+            
+            // Add color variations based on position for more organic look
+            float positionVariation = sin(length(uv) * 2.0 + t * 0.05) * 0.5 + 0.5;
+            nebulaCol = mix(nebulaCol, nebulaColor3, positionVariation * 0.3);
+            
+            // Boost saturation
+            nebulaCol = adjustSaturation(nebulaCol, nebulaSaturation);
+            
+            // Combine nebula layers with enhanced intensity
+            float nebulaCombined = (nebula1 * 0.7 + nebula2 * 0.5 + nebula3 * 0.3);
+            
+            // Add bright colored spots in the nebula
+            float brightSpots = pow(max(0.0, nebula1 - 0.5), 2.0) * 4.0;
+            vec3 brightSpotColor = mix(vec3(1.0, 0.7, 0.4), vec3(0.4, 0.7, 1.0), colorMix1);
+            nebulaCol += brightSpotColor * brightSpots * 0.5;
+            
+            // Add subtle color bands for more variation
+            float bands = sin(uv.y * 10.0 + nebula1 * 5.0 + t * 0.1) * 0.5 + 0.5;
+            vec3 bandColor = mix(nebulaColor1, nebulaColor3, bands);
+            nebulaCol = mix(nebulaCol, bandColor, 0.15);
+            
+            // Apply nebula to background with increased intensity
+            col += nebulaCol * nebulaCombined * nebulaIntensity;
+            
+            // Add subtle dark gradient for depth (reduced to preserve color)
+            float vignette = 1.0 - length(uv + M) * 0.2; // Reduced from 0.3
+            col *= vignette;
+            
+            // Add a subtle color glow to dark areas
+            vec3 ambientGlow = mix(nebulaColor1, nebulaColor2, 0.5) * 0.05;
+            col += ambientGlow * (1.0 - nebulaCombined);
+            
+            // Create simple star dots in layers with SWIRL and ENHANCED GLOW
+            for(float layer = 0.0; layer < 4.0; layer++) {
+                // Add swirl motion based on distance from center
+                float distFromCenter = length(uv);
+                float swirlAngle = t * swirlSpeed + distFromCenter * swirlAmount;
+                vec2 swirlUV = rotate2D(uv, swirlAngle);
                 
-                float depth = fract(i + t);
-                float scale = mix(canvasView, 0.1, depth);
-                float fade = depth * smoothstep(1., 0.9, depth);
+                // Grid-based star positions with swirl
+                vec2 layerUV = swirlUV + M * (layer + 1.0) * 0.3;
                 
-                float dist = length(uv);
-                float rotAngle = time * swirlSpeed + dist * swirlAmount;
-                vec2 swirlUV = rot2D(rotAngle) * uv;
+                // Add layer-specific rotation for more variety
+                float layerRotation = t * 0.1 * (layer + 1.0) + layer * 1.57;
+                layerUV = rotate2D(layerUV, layerRotation);
                 
-                float layerRotation = rotAngle * (1.0 + i * 0.2);
-                swirlUV = rot2D(layerRotation) * uv;
+                // Vary scale more dramatically per layer
+                float scale = 8.0 + layer * 7.0 + sin(layer * 2.0) * 3.0;
+                vec2 gridUV = layerUV * scale;
                 
-                float layerIndex = i / layerStep;
-                float fadeInOut = min(100.0 - layerIndex * 0.1 + 9.0, layerIndex) / 20.0;
+                vec2 gridID = floor(gridUV);
+                vec2 gridPos = fract(gridUV) - 0.5;
                 
-                col += StarLayer(swirlUV * scale + i * 453.2 - time * 0.05 + M, numStars) 
-                       * fade * fadeInOut;
+                // Multiple random values for more variation
+                float rand1 = hash(gridID + layer * 100.0);
+                float rand2 = hash(gridID + vec2(23.4, 56.7) + layer * 50.0);
+                float rand3 = hash(gridID + vec2(98.7, 65.4));
+                float rand4 = hash(gridID + vec2(45.6, 78.9));
+                float rand5 = hash(gridID + vec2(12.3, 45.6)); // Extra random for spike phase
+                
+                // More random offset for less uniform positioning
+                vec2 offset = vec2(
+                    hash(gridID + vec2(13.0, 7.0)) - 0.5,
+                    hash(gridID + vec2(7.0, 13.0)) - 0.5
+                );
+                offset *= 0.4 + rand3 * 0.2; // Vary offset amount per star
+                
+                // Vector to star center (keep for spike calculation)
+                vec2 starVec = gridPos - offset;
+                float starDist = length(starVec);
+                
+                // SIMPLIFIED SIZE CALCULATION
+                // Base size directly from starSize parameter
+                float baseSize = starSize; // Now starSize is the actual visible size
+                
+                // Random size variation per star (0.5x to 2x)
+                float sizeVariation = 0.5 + rand2 * 1.5;
+                
+                // Layer depth effect (closer layers = bigger stars)
+                float layerScale = 1.0 - layer * 0.15; // Subtle layer scaling
+                
+                // Final star core size
+                float adjustedSize = baseSize * sizeVariation * layerScale;
+                
+                // Glow extends beyond the core
+                float glowSize = adjustedSize * glowRadius;
+                
+                // Density control (what percentage of grid cells have stars)
+                float densityMod = numStars / 100.0;
+                
+                // Calculate star intensity with glow
+                float star;
+                
+                // FIXED: Check if this star should have spikes
+                bool shouldHaveSpikes = (rand4 < 0.3) && (enableSpikes > 0.5);
+                
+                if(shouldHaveSpikes) {
+                    // INVERSE SIZE RELATIONSHIP: smaller stars = longer spikes
+                    float spikeLength = 1.0 + (2.0 - sizeVariation) * 2.0; // Range: 1-5, smaller stars get longer
+                    
+                    // FIXED: Properly animated spike twinkling
+                    float animatedTime = time * spikeTwinkleSpeed;
+                    
+                    // Full star-shaped glow with properly animated twinkling spikes
+                    star = calculateStarGlow(starVec, adjustedSize, glowSize, spikeLength, rand5, animatedTime) * glowIntensity;
+                } else {
+                    // Soft circular glow without spikes (most stars)
+                    float core = 1.0 - smoothstep(0.0, adjustedSize * 1.5, starDist);
+                    core = pow(core, 1.5); // Softer core
+                    
+                    float glow = 1.0 - smoothstep(adjustedSize * 0.5, glowSize * 1.5, starDist);
+                    glow = pow(glow, 3.5); // Much softer glow falloff
+                    
+                    star = (core * 0.8 + glow * 0.3) * glowIntensity;
+                }
+                
+                // Extra bright core for very large stars
+                if(sizeVariation > 1.5) {
+                    float extraCore = 1.0 - smoothstep(0.0, adjustedSize * 0.5, starDist);
+                    star += extraCore * 1.5;
+                }
+                
+                // More dynamic twinkle for the star itself (not the spikes)
+                float twinkleSpeed = 2.0 + rand3 * 4.0;
+                float twinkle = sin(t * twinkleSpeed + rand1 * 6.28) * 0.4 + 0.6;
+                
+                // Vary twinkle intensity based on star size
+                if(sizeVariation > 1.2) {
+                    // Larger stars have more subtle twinkle
+                    twinkle = sin(t * twinkleSpeed * 0.5 + rand1 * 6.28) * 0.4 + 0.6;
+                }
+                
+                star *= twinkle;
+                
+                // More color variations with glow-specific colors
+                vec3 starColor;
+                vec3 glowColor;
+                float colorRand = rand1;
+                
+                if(colorRand < 0.15) {
+                    // Red giants
+                    starColor = vec3(1.0, 0.3, 0.1);
+                    glowColor = vec3(1.0, 0.2, 0.05);
+                } else if(colorRand < 0.25) {
+                    // Orange stars
+                    starColor = vec3(1.0, 0.6, 0.2);
+                    glowColor = vec3(1.0, 0.5, 0.1);
+                } else if(colorRand < 0.35) {
+                    // Yellow stars (like our sun)
+                    starColor = vec3(1.0, 1.0, 0.6);
+                    glowColor = vec3(1.0, 0.9, 0.3);
+                } else if(colorRand < 0.5) {
+                    // White-yellow stars
+                    starColor = vec3(1.0, 1.0, 0.85);
+                    glowColor = vec3(1.0, 1.0, 0.7);
+                } else if(colorRand < 0.7) {
+                    // Pure white stars
+                    starColor = vec3(1.0, 1.0, 1.0);
+                    glowColor = vec3(0.9, 0.95, 1.0);
+                } else if(colorRand < 0.85) {
+                    // Blue-white stars
+                    starColor = vec3(0.8, 0.9, 1.0);
+                    glowColor = vec3(0.6, 0.8, 1.0);
+                } else {
+                    // Blue giants
+                    starColor = vec3(0.6, 0.7, 1.0);
+                    glowColor = vec3(0.4, 0.6, 1.0);
+                }
+                
+                // Mix star core and glow colors based on distance
+                float glowMix = smoothstep(adjustedSize, glowSize, starDist);
+                starColor = mix(starColor, glowColor, glowMix * 0.5);
+                
+                // Add subtle color variation within each star
+                starColor *= 0.8 + rand2 * 0.4;
+                
+                // Stars pick up some nebula color (enhanced)
+                if(rand3 > 0.7) {
+                    starColor = mix(starColor, nebulaColor1, 0.4);
+                } else if(rand3 < 0.3) {
+                    starColor = mix(starColor, nebulaColor2, 0.4);
+                }
+                
+                // Layer fade for depth
+                float layerFade = 1.0 / (layer * 0.7 + 1.0);
+                
+                // Only show star if random value passes threshold
+                if(rand1 < densityMod) {
+                    // Stars shine through nebula
+                    float starIntensity = star * layerFade;
+                    
+                    // Apply HDR-like bloom for bright stars
+                    if(starIntensity > 1.0) {
+                        // Super bright cores
+                        vec3 bloom = starColor * pow(starIntensity - 1.0, 0.5) * 0.5;
+                        col += bloom;
+                        col = mix(col, starColor, min(starIntensity, 1.0));
+                    } else if(starIntensity > 0.5) {
+                        // Bright stars punch through nebula
+                        col = mix(col, starColor, starIntensity);
+                    } else {
+                        // Dim stars add to the color
+                        col += starColor * starIntensity;
+                    }
+                }
             }
             
+            // Apply mask texture
             vec4 maskColor = texture2D(maskTexture, vUv);
             col *= maskColor.rgb;
             
-            col = col * col * 1.5;
-            col = tanh(col * 1.5);
+            // // Enhanced tone mapping that preserves colors better
+            col = col / (1.0 + col * 0.3); // Reduced compression to preserve color
+            col = pow(col, vec3(0.65)); // Lower gamma for brighter colors
+            
+            // // Boost saturation in final output
+            col = adjustSaturation(col, 1.2);
+            
+            // // Subtle boost to bright areas for more glow
+            float brightness = dot(col, vec3(0.299, 0.587, 0.114));
+            if(brightness > 0.4) { // Lower threshold
+                col *= 1.0 + (brightness - 0.4) * 0.5; // More boost
+            }
+
+              // Contrast enhancement
+          col = col * col * 2.0;
+          
+     // Tonemap
+          col = tanh(col * 1.5);
             
             return col;
         }`
@@ -703,14 +843,14 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-        vec3 starColor = getStarField();
+        vec3 starColor = getSimpleStarField();
         diffuseColor.rgb += starColor;`
       );
 
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
-        vec3 starEmissive = getStarField() * 0.2;
+        vec3 starEmissive = getSimpleStarField() * 0.2;
         totalEmissiveRadiance += starEmissive;`
       );
     };
@@ -742,53 +882,51 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
       this.userData.uniforms.numStars.value = stars;
     }
   }
-
-  setNumLayers(layers) {
+  
+  setStarSize(size) {
     if (this.userData.uniforms) {
-      this.userData.uniforms.numLayers.value = layers;
+      this.userData.uniforms.starSize.value = size;
     }
   }
 
-  setMaskTexture(texture) {
+  setGlowIntensity(intensity) {
     if (this.userData.uniforms) {
-      const tex = texture || this.defaultMaskTex;
-      this.userData.uniforms.maskTexture.value = tex;
+      this.userData.uniforms.glowIntensity.value = intensity;
     }
   }
 
-  setMaskIntensity(intensity) {
+  setGlowRadius(radius) {
     if (this.userData.uniforms) {
-      this.userData.uniforms.maskIntensity.value = intensity;
+      this.userData.uniforms.glowRadius.value = radius;
     }
   }
 
+  setEnableSpikes(enable) {
+    if (this.userData.uniforms) {
+      this.userData.uniforms.enableSpikes.value = enable ? 1.0 : 0.0;
+    }
+  }
+
+  setSpikeTwinkleSpeed(speed) {
+    if (this.userData.uniforms) {
+      this.userData.uniforms.spikeTwinkleSpeed.value = speed;
+    }
+  }
+  
   setNebulaIntensity(intensity) {
     if (this.userData.uniforms) {
       this.userData.uniforms.nebulaIntensity.value = intensity;
     }
   }
-
-  setNebulaScale(scale) {
+  
+  setNebulaSaturation(saturation) {
     if (this.userData.uniforms) {
-      this.userData.uniforms.nebulaScale.value = scale;
-    }
-  }
-
-  setNebulaColors(color1, color2) {
-    if (this.userData.uniforms) {
-      this.userData.uniforms.nebulaColor1.value = color1;
-      this.userData.uniforms.nebulaColor2.value = color2;
-    }
-  }
-
-  setNebulaSpeed(speed) {
-    if (this.userData.uniforms) {
-      this.userData.uniforms.nebulaSpeed.value = speed;
+      this.userData.uniforms.nebulaSaturation.value = saturation;
     }
   }
 }
 
-// Helper function to apply star nest to a model
+// Helper function to apply star nest to a model with VIBRANT NEBULA
 function applyStarNestToModel(gltfModel, resources = {}) {
   const materials = new Map();
   
@@ -800,10 +938,20 @@ function applyStarNestToModel(gltfModel, resources = {}) {
     if (child.isMesh && child.material?.name?.includes("latex_")) {
       const originalMaterial = child.material;
       
-      // Create a new star nest material
       const starNestMat = new StarNestMaterial({
         maskTexture: gradientTexture,
-        maskIntensity: 1.0
+        numStars: 80.0,
+        starSize: 0.01,
+        glowIntensity: 1.2,
+        glowRadius: 2.5,
+        enableSpikes: true,
+        spikeTwinkleSpeed: 4.0,
+        // VIBRANT NEBULA COLORS
+        nebulaColor1: new THREE.Vector3(1.0, 0.2, 0.5),  // Hot pink
+        nebulaColor2: new THREE.Vector3(0.1, 0.5, 1.0),  // Electric blue
+        nebulaColor3: new THREE.Vector3(1.0, 0.6, 0.1),  // Golden orange
+        nebulaIntensity: 0.8,     // Bright nebula (0.3 to 1.5)
+        nebulaSaturation: 2.8,    // High saturation (1.0 to 2.5)
       });
       
       // Copy environment map if available
@@ -831,7 +979,7 @@ function applyStarNestToModel(gltfModel, resources = {}) {
   return materials;
 }
 
-// Update function for star nest materials
+
 function updateStarNestMaterials(materials, deltaTime, mouseX, mouseY, audioTime) {
   materials.forEach(material => {
     if (material.update) {
@@ -845,6 +993,10 @@ function updateStarNestMaterials(materials, deltaTime, mouseX, mouseY, audioTime
     }
   });
 }
+
+
+
+
 
 // Exports
 export { 

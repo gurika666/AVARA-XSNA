@@ -17,7 +17,8 @@ import {
   createSkyPlane, 
   updateCloudUniforms,
   applyStarNestToModel,
-  updateStarNestMaterials 
+  updateStarNestMaterials,
+   SHADER_QUALITY 
 } from './shader-manager.js';
 
 // Import other modules
@@ -154,6 +155,10 @@ const animEndTime2 = 110;
   
 let fogStartColor = new THREE.Color(config.fog.start.color);
 let fogEndColor = new THREE.Color(config.fog.end.color);
+
+
+  
+  
 
 const textAppearTimes = [
   { time: 0.593, text: "თვალებს" }, { time: 26.593, text: "თვალებს" },
@@ -885,12 +890,47 @@ function animate(time) {
   // Early return if delta is too small (skip frame)
   if (deltaTime < 0.001) return;
   
-  // Update mixers
-  gltfMixer?.update(deltaTime);
-  titleMixer?.update(deltaTime);
-
   const audioTime = AudioController.getCurrentTime();
   
+  // Check if we should stop most updates (after second animation ends)
+  // But allow resuming if we scrub back in timeline
+  const shouldStopMostUpdates = audioTime >= animEndTime2;
+  
+  // Track if we've moved back in timeline
+  if (shouldStopMostUpdates && animationCache.lastStoppedState) {
+    // We were stopped, check if we've gone back
+    if (audioTime < animEndTime2) {
+      // We've scrubbed back - reset stopped state
+      animationCache.lastStoppedState = false;
+      animationCache.lastCameraAnimState = -1; // Force camera update
+      console.log('Scrubbed back in timeline - resuming all updates');
+    }
+  } else if (!shouldStopMostUpdates && !animationCache.lastStoppedState) {
+    // Normal state - not stopped
+    animationCache.lastStoppedState = false;
+  } else if (shouldStopMostUpdates && !animationCache.lastStoppedState) {
+    // Just reached the stop point
+    animationCache.lastStoppedState = true;
+  }
+  
+  // Use the current state for the actual check
+  const currentlyStopped = shouldStopMostUpdates && animationCache.lastStoppedState;
+  
+  // Only update systems that should continue running
+  if (!currentlyStopped) {
+    // Update mixers
+    gltfMixer?.update(deltaTime);
+    titleMixer?.update(deltaTime);
+    
+    // Update sky shader
+    updateCloudUniforms(skyPlane.material, audioTime * 0.03, window.innerWidth, window.innerHeight);
+    
+    // Update title and text
+    updateTitlePosition(audioTime);
+    textManager?.update(audioTime, deltaTime, textAppearTimes);
+  }
+  
+  // ALWAYS update audio-related stuff for scrubbing to work
   // Cache audio duration to avoid repeated calls
   let audioDuration = animationCache.lastAudioDuration;
   if (songprogressadd && Math.abs(audioDuration - AudioController.getAudioDuration()) > 0.01) {
@@ -898,7 +938,7 @@ function animate(time) {
     animationCache.lastAudioDuration = audioDuration;
   }
 
-  // Update Rive progress (optimized)
+  // Update Rive progress (ALWAYS for scrubbing)
   if (songprogressadd && scrub && audioDuration > 0) {
     if (scrub.value && !isScrubbing) {
       isScrubbing = true;
@@ -918,39 +958,48 @@ function animate(time) {
       songprogressadd.value = progress;
     }
   }
-
-  // Update title and text
-  updateTitlePosition(audioTime);
-  textManager?.update(audioTime, deltaTime, textAppearTimes);
   
-  // Update sky shader
-  updateCloudUniforms(skyPlane.material, audioTime * 0.03, window.innerWidth, window.innerHeight);
-  
-  // Vegetation updates (with state caching)
-  let vegetationCounts = { trees: 0 };
-  
-  // Only check vegetation stop condition if not already stopped
-  if (!vegetationStopped && audioTime >= animEndTime) {
-    vegetationStopped = true;
-    console.log('Camera animation finished - stopping vegetation updates');
+  if (!currentlyStopped) {
+    // Vegetation updates
+    let vegetationCounts = { trees: 0 };
+    
+    // Check vegetation stop/resume independently
+    if (!vegetationStopped && audioTime >= animEndTime) {
+      vegetationStopped = true;
+      console.log('First camera animation finished - stopping vegetation updates');
+    } else if (vegetationStopped && audioTime < animEndTime) {
+      // Resume vegetation if we scrub back before first animation end
+      vegetationStopped = false;
+      console.log('Scrubbed back - resuming vegetation updates');
+    }
+    
+    if (!vegetationStopped) {
+      vegetationCounts = VegetationManager.updateVegetation(scene, 0.5 * (deltaTime * 60));
+    }
+    
+    AudioController.update(deltaTime, vegetationCounts.trees);
+    
+    // Handle animation transitions
+    handleAnimationTransitions(audioTime, deltaTime);
+    
+    // Update head tracking
+    updateHeadLookAtOptimized(camera, deltaTime);
+    
+    // Update spotlight
+    mouseNDC.set((mouseX / window.innerWidth) * 2, (mouseY / window.innerHeight) * -2);
+    raycaster.setFromCamera(mouseNDC, camera);
+    raycaster.ray.at(50, animationCache.targetPoint);
+    spotlight.target.position.copy(animationCache.targetPoint);
+    spotlight.position.copy(camera.position);
+    
+    // Update cursor
+    cursorPlane.update(camera, deltaTime);
   }
   
-  if (!vegetationStopped) {
-    vegetationCounts = VegetationManager.updateVegetation(scene, 0.5 * (deltaTime * 60));
-  }
-  
-  AudioController.update(deltaTime, vegetationCounts.trees);
-
-  // Handle animation transitions (optimized)
-  handleAnimationTransitions(audioTime, deltaTime);
-  
-  // Update head tracking with cached objects
-  updateHeadLookAtOptimized(camera, deltaTime);
-  
-  // Update camera with state caching
+  // ALWAYS update camera - don't stop camera animations
   updateCameraOptimized(audioTime);
   
-  // Update mouse-based camera rotation
+  // Update mouse-based camera rotation (always active)
   const targetRotY = (mouseX / window.innerWidth) * 0.15;
   const targetRotX = (mouseY / window.innerHeight) * 0.15;
   
@@ -962,22 +1011,13 @@ function animate(time) {
   camera.rotation.y = baseCameraRot.y + targetRotY;
   camera.rotation.z = baseCameraRot.z;
   
-  // Update spotlight (reuse cached objects)
-  mouseNDC.set((mouseX / window.innerWidth) * 2, (mouseY / window.innerHeight) * -2);
-  raycaster.setFromCamera(mouseNDC, camera);
-  raycaster.ray.at(50, animationCache.targetPoint);
-  spotlight.target.position.copy(animationCache.targetPoint);
-  spotlight.position.copy(camera.position);
-  
-  // Update cursor and render
-  cursorPlane.update(camera, deltaTime);
-  
+  // Always render and update star nest materials
   if (scene && camera) composer.render();
+//  if (scene && camera) renderer.render(scene, camera);
   
-  // Update star nest materials using unified shader manager
+  // Update star nest materials - always runs
   updateStarNestMaterials(starNestMaterials, deltaTime, mouseX, mouseY, audioTime);
 }
-
 // Optimized head tracking function
 function updateHeadLookAtOptimized(camera, deltaTime) {
   if (!headBone || !isAnimating) return;
