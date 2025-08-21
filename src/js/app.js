@@ -1,4 +1,4 @@
-// app.js - Optimized main application with streamlined loading and animation blending
+// app.js - Optimized main application with unified shader manager
 import * as THREE from "three";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -6,17 +6,27 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { ChromaticAberrationPass, CursorPlane, createSkyPlane, updateCloudUniforms } from './shader-manager.js';
-import {GammaCorrectionShader} from 'three/examples/jsm/shaders/GammaCorrectionShader'
+import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader';
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
+
+// Import unified shader manager
+import { 
+  ChromaticAberrationPass, 
+  CursorPlane, 
+  createSkyPlane, 
+  updateCloudUniforms,
+  applyStarNestToModel,
+  updateStarNestMaterials 
+} from './shader-manager.js';
+
+// Import other modules
 import * as AudioController from './audio-controller.js';
 import * as VegetationManager from './vegetation-manager.js';
 import * as LoadingManager from './loading-manager.js';
 import { DepthDrivenBlurPass } from './custom-dof.js';
-import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
 import { TextManager } from './TextManager.js';
-import { Rive, EventType, RiveEventType, Layout,  Fit, Alignment } from '@rive-app/webgl2'
-import { applyStarNestToModel, updateStarNestMaterials } from './star-nest-shader.js';
+import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-app/webgl2';
 
 let depthBlurPass;
 let riveOverlay;
@@ -33,11 +43,7 @@ let isScrubbing = false;
 let isSeekingAudio = false;
 
 let starNestMaterials = new Map();
-
-
-
 let vegetationStopped = false;
-
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, textManager;
@@ -52,7 +58,7 @@ let textmaterial;
 const canvas = document.querySelector('.main-animation');
 const rivecanvas = document.querySelector('.rive');
 
-// Camera tracking globals (FIX: Added here for proper scope)
+// Camera tracking globals
 let baseCameraPos = new THREE.Vector3();
 let baseCameraRot = new THREE.Euler();
 
@@ -65,7 +71,6 @@ let faceUpAnimation = null;
 let hasTransitioned = false;
 let isInTransition = false;
 let transitionStartTime = null;
-
 
 let headBone = null;
 let headQuaternion = new THREE.Quaternion();
@@ -123,7 +128,7 @@ const animEndTime = 80;
 const transitionTime = 77;
 const transitionDuration = 2.8;
 
- // First camera animation (existing)
+// First camera animation
 let startPos = new THREE.Vector3(0, 2, 0);
 let endPos = new THREE.Vector3(0, 12, -94);
 
@@ -133,23 +138,22 @@ let endRot = new THREE.Euler(0.8, 0, 0);
 let startFOV = 40;
 let endFOV = 90;
 
-// Second camera animation (new)
-let startPos2 = new THREE.Vector3(0, 12, -94);  // Starts where first animation ends
-let endPos2 = new THREE.Vector3(0, 12, -95);   // Moves to the left, down slightly, and forward a bit
+// Second camera animation
+let startPos2 = new THREE.Vector3(0, 12, -94);
+let endPos2 = new THREE.Vector3(0, 12, -95);
 
-let startRot2 = new THREE.Euler(0.8, 0, 0);     // Starts where first animation ends
-let endRot2 = new THREE.Euler(0, 0, 0);    // Less upward tilt, rotate left
+let startRot2 = new THREE.Euler(0.8, 0, 0);
+let endRot2 = new THREE.Euler(0, 0, 0);
 
-let startFOV2 = 90;   // Starts where first animation ends
-let endFOV2 = 10;     // Narrows field of view for more focused shot
+let startFOV2 = 90;
+let endFOV2 = 10;
 
-
-// Second animation timing (new)
-const animStartTime2 = 85;   // Gives a 5 second pause after first animation
-const animEndTime2 = 110;    // 25 second duration for second animation
+// Second animation timing
+const animStartTime2 = 85;
+const animEndTime2 = 110;
   
-  let fogStartColor = new THREE.Color(config.fog.start.color);
-  let fogEndColor = new THREE.Color(config.fog.end.color);
+let fogStartColor = new THREE.Color(config.fog.start.color);
+let fogEndColor = new THREE.Color(config.fog.end.color);
 
 const textAppearTimes = [
   { time: 0.593, text: "თვალებს" }, { time: 26.593, text: "თვალებს" },
@@ -239,7 +243,6 @@ function setupEventListeners() {
       const blurAmount = parseInt(e.key);
       depthBlurPass.setMaxBlurSize(blurAmount);
     }
-
   });
 }
 
@@ -409,19 +412,7 @@ async function loadGLB(path, manager) {
       gltf => {
         gltfModel = gltf.scene;
         
-        // // Apply materials
-        // if (resources.txthdr) {
-        //   gltfModel.traverse(child => {
-        //     if (child.isMesh && child.material?.name?.includes("latex_")) {
-        //       const mat = child.material.clone();
-        //       mat.envMap = resources.txthdr;
-        //       mat.envMapIntensity = 1.0;
-        //       mat.needsUpdate = true;
-        //       child.material = mat;
-        //     }
-        //   });
-        // }
-
+        // Apply star nest shader using unified shader manager
         starNestMaterials = applyStarNestToModel(gltfModel, resources);
         
         const { position: p, scale: s, rotation: r } = config.glb;
@@ -432,7 +423,6 @@ async function loadGLB(path, manager) {
         
         // Setup tracking systems
         setupHeadTracking();
- 
         
         // Handle animations
         if (gltf.animations?.length) {
@@ -698,7 +688,6 @@ function setupHeadTracking() {
   }
 }
 
-
 function updateTitlePosition(audioTime) {
   if (!titleModel) return;
   
@@ -767,12 +756,8 @@ function updateHeadLookAt(camera, deltaTime) {
       maxRotationX
     );
     
-    
-
     targetRotationY = THREE.MathUtils.lerp(mouseRotationY, 0, returnToOriginalProgress);
     targetRotationX = THREE.MathUtils.lerp(mouseRotationX, 0, returnToOriginalProgress);
-
-    
   }
   
   const lookEuler = new THREE.Euler(targetRotationX, targetRotationY, 0, 'YXZ');
@@ -863,11 +848,10 @@ function onWindowResize() {
   }
 
   starNestMaterials.forEach(material => {
-  if (material.userData.updateResolution) {
-    material.userData.updateResolution(window.innerWidth, window.innerHeight);
-  }
-});
-
+    if (material.updateResolution) {
+      material.updateResolution(window.innerWidth, window.innerHeight);
+    }
+  });
 }
 
 const animationCache = {
@@ -988,9 +972,9 @@ function animate(time) {
   // Update cursor and render
   cursorPlane.update(camera, deltaTime);
   
-  // if (scene && camera) renderer.render(scene, camera);
   if (scene && camera) composer.render();
   
+  // Update star nest materials using unified shader manager
   updateStarNestMaterials(starNestMaterials, deltaTime, mouseX, mouseY, audioTime);
 }
 
@@ -1170,9 +1154,6 @@ function updateCameraOptimized(audioTime) {
     baseCameraRot.y = THREE.MathUtils.lerp(startRot2.y, endRot2.y, easedProgress);
     baseCameraRot.z = THREE.MathUtils.lerp(startRot2.z, endRot2.z, easedProgress);
     
-    // You can also animate fog during second animation if desired
-    // For now keeping it at the end state of first animation
-    
     const newFOV = THREE.MathUtils.lerp(startFOV2, endFOV2, easedProgress);
     if (Math.abs(camera.fov - newFOV) > 0.01) {
       camera.fov = newFOV;
@@ -1193,7 +1174,8 @@ function updateCameraOptimized(audioTime) {
   camera.position.copy(baseCameraPos);
   animationCache.lastCameraAnimState = currentAnimState;
 }
-// Separate function for animation transitions (cleaner code)
+
+// Separate function for animation transitions
 function handleAnimationTransitions(audioTime, deltaTime) {
   if (!faceUpAnimation || !walkAnimation) return;
   
@@ -1303,4 +1285,4 @@ setTimeout(() => {
 }, 1000);
 
 // Exports
-export { scene, gltfModel, gltfMixer, gltfAnimationActions  };
+export { scene, gltfModel, gltfMixer, gltfAnimationActions };
