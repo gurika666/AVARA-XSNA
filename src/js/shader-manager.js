@@ -5,6 +5,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 // SIMPLE QUALITY CONTROL
 export const SHADER_QUALITY = 1.0; // Increased back to normal since we simplified the shader
 
+
 // Shader definitions
 const shaders = {
   // Chromatic Aberration Shader (unchanged)
@@ -334,8 +335,6 @@ function updateCloudUniforms(material, time, width, height) {
 
 
 
-
-// ENHANCED Star Nest Material Class with VIBRANT COLORFUL NEBULA
 class StarNestMaterial extends THREE.MeshPhysicalMaterial {
   constructor(options = {}) {
     const {
@@ -355,7 +354,9 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
       nebulaColor2 = new THREE.Vector3(0.2, 0.6, 1.0),  // Bright cyan-blue
       nebulaColor3 = new THREE.Vector3(1.0, 0.5, 0.2),  // Orange-gold (NEW)
       nebulaIntensity = 0.8,  // NEW: Overall nebula brightness (0.3 to 1.5)
-      nebulaSaturation = 1.5, // NEW: Color saturation boost (1.0 to 2.0)
+      nebulaSaturation = 1.5, // NEW: Color saturation boost (1.0 to 2.0),
+      swirlAmount = 2.5, // NEW: Amount of swirling effect
+      swirlSpeed = 1.3 // NEW: Speed of swirling effect
     } = options;
 
     super({
@@ -379,7 +380,9 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
       nebulaColor2,
       nebulaColor3,
       nebulaIntensity,
-      nebulaSaturation
+      nebulaSaturation,
+      swirlAmount,
+      swirlSpeed
     };
 
     // Create default white texture for when no mask is provided
@@ -416,8 +419,8 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
       shader.uniforms.glowRadius = { value: options.glowRadius };
       shader.uniforms.enableSpikes = { value: options.enableSpikes ? 1.0 : 0.0 };
       shader.uniforms.spikeTwinkleSpeed = { value: options.spikeTwinkleSpeed };
-      shader.uniforms.swirlAmount = { value: 2.5 };
-      shader.uniforms.swirlSpeed = { value: 1.3 };
+      shader.uniforms.swirlAmount = { value: options.swirlAmount };
+      shader.uniforms.swirlSpeed = { value: options.swirlSpeed };
       shader.uniforms.maskTexture = { value: maskTex };
       shader.uniforms.nebulaColor1 = { value: options.nebulaColor1 };
       shader.uniforms.nebulaColor2 = { value: options.nebulaColor2 };
@@ -926,7 +929,7 @@ class StarNestMaterial extends THREE.MeshPhysicalMaterial {
   }
 }
 
-// Helper function to apply star nest to a model with VIBRANT NEBULA
+
 function applyStarNestToModel(gltfModel, resources = {}) {
   const materials = new Map();
   

@@ -33,14 +33,7 @@ import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-ap
 window.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
                   (window.innerWidth <= 768);
 
-// // Add class to body
-// if (window.isMobile) {
-//   document.body.classList.add('mobile');
-//   console.log("mobile")
-// } else {
-//   document.body.classList.add('desktop');
-//   console.log("destop")
-// }
+
 
 let depthBlurPass;
 let riveOverlay;
@@ -170,8 +163,47 @@ let fogStartColor = new THREE.Color(config.fog.start.color);
 let fogEndColor = new THREE.Color(config.fog.end.color);
 
 
+// Add swirl animation timing
+const swirlAnimStartTime = 110; // Start at end of second camera animation
+const swirlAnimDuration = 10; // Adjust this duration as needed (in seconds)
+const swirlAnimEndTime = swirlAnimStartTime + swirlAnimDuration;
+
+function validateSecondAnimation() {
+  console.log('=== Second Animation Setup ===');
+  console.log('Animation 1 ends at:', animEndTime);
+  console.log('Animation 2 starts at:', animStartTime2);
+  console.log('Animation 2 ends at:', animEndTime2);
   
+  console.log('\nFirst animation end state:');
+  console.log('  End Pos:', endPos);
+  console.log('  End Rot:', endRot);
+  console.log('  End FOV:', endFOV);
   
+  console.log('\nSecond animation start state:');
+  console.log('  Start Pos2:', startPos2);
+  console.log('  Start Rot2:', startRot2);
+  console.log('  Start FOV2:', startFOV2);
+  
+  console.log('\nSecond animation end state:');
+  console.log('  End Pos2:', endPos2);
+  console.log('  End Rot2:', endRot2);
+  console.log('  End FOV2:', endFOV2);
+  
+  // Check if start of second animation matches end of first
+  const posMatch = startPos2.equals(endPos);
+  const rotMatch = startRot2.equals(endRot);
+  const fovMatch = startFOV2 === endFOV;
+  
+  if (!posMatch) console.warn('⚠️ Position mismatch between animations!');
+  if (!rotMatch) console.warn('⚠️ Rotation mismatch between animations!');
+  if (!fovMatch) console.warn('⚠️ FOV mismatch between animations!');
+  
+  if (posMatch && rotMatch && fovMatch) {
+    console.log('✅ Animation continuity verified');
+  }
+}
+  
+
 
 const textAppearTimes = [
   { time: 0.593, text: "თვალებს" }, { time: 26.593, text: "თვალებს" },
@@ -597,6 +629,7 @@ async function loadRiveOverlay() {
 
       rive.on(EventType.RiveEvent || 'riveevent', (event) => {
         if (event && event.data && event.data.name === 'click') {
+          document.body.classList.add('clicked');
           if (isSetupComplete) {
             togglePlayPause();
           }
@@ -725,6 +758,42 @@ function updateTitlePosition(audioTime) {
     titleModel.position.z = THREE.MathUtils.lerp(startZ, endZ, easedProgress);
   } else {
     titleModel.position.z = endZ;
+  }
+}
+function updateSwirlAnimation(audioTime) {
+  if (!starNestMaterials || starNestMaterials.size === 0) return;
+  
+  // Check if we're in the swirl animation timeframe
+  if (audioTime < swirlAnimStartTime) {
+    // Before animation - keep default values
+    starNestMaterials.forEach(material => {
+      if (material.userData?.uniforms) {
+        material.userData.uniforms.swirlAmount.value = 2.5;
+        material.userData.uniforms.swirlSpeed.value = 1.3;
+      }
+    });
+  } else if (audioTime >= swirlAnimStartTime && audioTime <= swirlAnimEndTime) {
+    // During animation - interpolate values
+    const progress = (audioTime - swirlAnimStartTime) / swirlAnimDuration;
+    const easedProgress = progress * progress * (3 - 2 * progress); // Smooth easing
+    
+    const swirlAmount = THREE.MathUtils.lerp(2.5, 6.0, easedProgress);
+    const swirlSpeed = THREE.MathUtils.lerp(1.3, 20.0, easedProgress);
+    
+    starNestMaterials.forEach(material => {
+      if (material.userData?.uniforms) {
+        material.userData.uniforms.swirlAmount.value = swirlAmount;
+        material.userData.uniforms.swirlSpeed.value = swirlSpeed;
+      }
+    });
+  } else {
+    // After animation - keep final values
+    starNestMaterials.forEach(material => {
+      if (material.userData?.uniforms) {
+        material.userData.uniforms.swirlAmount.value = 6.0;
+        material.userData.uniforms.swirlSpeed.value = 20.0;
+      }
+    });
   }
 }
 
@@ -902,7 +971,7 @@ const animationCache = {
   lastCameraAnimState: -1, // 0=before, 1=during, 2=after
 };
 
-// Optimized animate function
+
 function animate(time) {
   if (!isAnimating) return;
   animationId = requestAnimationFrame(animate);
@@ -1021,18 +1090,20 @@ function animate(time) {
   
   // ALWAYS update camera - don't stop camera animations
   updateCameraOptimized(audioTime);
+
+  updateSwirlAnimation(audioTime);
   
   // Update mouse-based camera rotation (always active)
   const targetRotY = (mouseX / window.innerWidth) * 0.15;
-  const targetRotX = (mouseY / window.innerHeight) * 0.15;
-  
-  camera.rotation.x = THREE.MathUtils.clamp(
-    baseCameraRot.x + targetRotX,
-    baseCameraRot.x - 0.15,
-    baseCameraRot.x + 0.15
-  );
-  camera.rotation.y = baseCameraRot.y + targetRotY;
-  camera.rotation.z = baseCameraRot.z;
+const targetRotX = (mouseY / window.innerHeight) * 0.15;
+
+camera.rotation.x = THREE.MathUtils.clamp(
+  baseCameraRot.x + targetRotX,
+  baseCameraRot.x - 0.15,
+  baseCameraRot.x + 0.15
+);
+camera.rotation.y = baseCameraRot.y + targetRotY;
+camera.rotation.z = baseCameraRot.z;
   
   // Always render and update star nest materials
   if (scene && camera) composer.render();
@@ -1041,7 +1112,9 @@ function animate(time) {
   // Update star nest materials - always runs
   updateStarNestMaterials(starNestMaterials, deltaTime, mouseX, mouseY, audioTime);
 }
-// Optimized head tracking function
+
+
+
 function updateHeadLookAtOptimized(camera, deltaTime) {
   if (!headBone || !isAnimating) return;
   
@@ -1120,6 +1193,8 @@ function updateHeadLookAtOptimized(camera, deltaTime) {
   headBone.quaternion.slerp(animationCache.blendedQuaternion, smoothingFactor);
 }
 
+
+
 function updateCameraOptimized(audioTime) {
   let currentAnimState;
   
@@ -1135,35 +1210,88 @@ function updateCameraOptimized(audioTime) {
     currentAnimState = 4; // After all animations
   }
   
-  // Skip updates if state hasn't changed (except during animations)
-  if (currentAnimState === animationCache.lastCameraAnimState && 
-      currentAnimState !== 1 && currentAnimState !== 3) {
-    return;
+  // Detect large jumps that skip states
+  const previousState = animationCache.lastCameraAnimState;
+  const isJumpingStates = Math.abs(currentAnimState - previousState) > 1;
+  
+  if (isJumpingStates && currentAnimState === 4) {
+    console.log(`Direct jump from state ${previousState} to state 4 detected at time ${audioTime.toFixed(2)}`);
+    
+    // When jumping directly to state 4, we need to instantly set all the intermediate values
+    // to their final states to avoid visual jumps
+    
+    // First, ensure fog is at end state
+    scene.fog.near = config.fog.end.near;
+    scene.fog.far = config.fog.end.far;
+    scene.fog.color.copy(fogEndColor);
+    
+    // If jumping from early states (0 or 1), we need to smoothly transition
+    // to the final position rather than jumping directly
+    if (previousState <= 1) {
+      // Option 1: Instant jump to final position (if you want immediate positioning)
+      baseCameraPos.copy(endPos2);
+      baseCameraRot.copy(endRot2);
+      camera.fov = endFOV2;
+      
+      // Option 2: If you want a smoother transition, you could animate over a few frames
+      // Uncomment this section if you prefer smooth transition:
+      /*
+      if (!animationCache.jumpTransition) {
+        animationCache.jumpTransition = {
+          startPos: camera.position.clone(),
+          startRot: camera.rotation.clone(),
+          startFOV: camera.fov,
+          startTime: audioTime,
+          duration: 0.5 // Half second transition
+        };
+      }
+      */
+    }
+    
+    camera.updateProjectionMatrix();
   }
   
+  // Handle smooth transition if enabled (Option 2 from above)
+  if (animationCache.jumpTransition && currentAnimState === 4) {
+    const jumpProgress = Math.min(1, (audioTime - animationCache.jumpTransition.startTime) / animationCache.jumpTransition.duration);
+    
+    if (jumpProgress < 1) {
+      // Still transitioning
+      const easedProgress = jumpProgress * jumpProgress * (3 - 2 * jumpProgress);
+      
+      baseCameraPos.lerpVectors(animationCache.jumpTransition.startPos, endPos2, easedProgress);
+      baseCameraRot.x = THREE.MathUtils.lerp(animationCache.jumpTransition.startRot.x, endRot2.x, easedProgress);
+      baseCameraRot.y = THREE.MathUtils.lerp(animationCache.jumpTransition.startRot.y, endRot2.y, easedProgress);
+      baseCameraRot.z = THREE.MathUtils.lerp(animationCache.jumpTransition.startRot.z, endRot2.z, easedProgress);
+      
+      camera.fov = THREE.MathUtils.lerp(animationCache.jumpTransition.startFOV, endFOV2, easedProgress);
+      camera.updateProjectionMatrix();
+      
+      camera.position.copy(baseCameraPos);
+      animationCache.lastCameraAnimState = currentAnimState;
+      return; // Exit early during transition
+    } else {
+      // Transition complete
+      delete animationCache.jumpTransition;
+    }
+  }
+  
+  // Normal state handling
   if (currentAnimState === 0) {
     // Before any animation
     baseCameraPos.copy(startPos);
     baseCameraRot.copy(startRot);
     
-    if (scene.fog.near !== config.fog.start.near) {
-      scene.fog.near = config.fog.start.near;
-      scene.fog.far = config.fog.start.far;
-      scene.fog.color.copy(fogStartColor);
-    }
+    scene.fog.near = config.fog.start.near;
+    scene.fog.far = config.fog.start.far;
+    scene.fog.color.copy(fogStartColor);
     
-    if (camera.fov !== startFOV) {
-      camera.fov = startFOV;
-      camera.updateProjectionMatrix();
-    }
-    
-    if (vegetationStopped) {
-      vegetationStopped = false;
-    }
+    camera.fov = startFOV;
+    camera.updateProjectionMatrix();
     
   } else if (currentAnimState === 1) {
     // During first animation
-    const progress = (audioTime - animStartTime) / (animEndTime - animStartTime);
+    const progress = Math.max(0, Math.min(1, (audioTime - animStartTime) / (animEndTime - animStartTime)));
     const easedProgress = progress * progress * (3 - 2 * progress);
     
     baseCameraPos.lerpVectors(startPos, endPos, easedProgress);
@@ -1171,45 +1299,28 @@ function updateCameraOptimized(audioTime) {
     baseCameraRot.y = THREE.MathUtils.lerp(startRot.y, endRot.y, easedProgress);
     baseCameraRot.z = THREE.MathUtils.lerp(startRot.z, endRot.z, easedProgress);
     
-    const newFogNear = THREE.MathUtils.lerp(config.fog.start.near, config.fog.end.near, easedProgress);
-    const newFogFar = THREE.MathUtils.lerp(config.fog.start.far, config.fog.end.far, easedProgress);
+    scene.fog.near = THREE.MathUtils.lerp(config.fog.start.near, config.fog.end.near, easedProgress);
+    scene.fog.far = THREE.MathUtils.lerp(config.fog.start.far, config.fog.end.far, easedProgress);
+    scene.fog.color.lerpColors(fogStartColor, fogEndColor, easedProgress);
     
-    if (Math.abs(scene.fog.near - newFogNear) > 0.01 || 
-        Math.abs(scene.fog.far - newFogFar) > 0.01) {
-      scene.fog.near = newFogNear;
-      scene.fog.far = newFogFar;
-      scene.fog.color.lerpColors(fogStartColor, fogEndColor, easedProgress);
-    }
-    
-    const newFOV = THREE.MathUtils.lerp(startFOV, endFOV, easedProgress);
-    if (Math.abs(camera.fov - newFOV) > 0.01) {
-      camera.fov = newFOV;
-      camera.updateProjectionMatrix();
-    }
-    
-    if (vegetationStopped) {
-      vegetationStopped = false;
-    }
+    camera.fov = THREE.MathUtils.lerp(startFOV, endFOV, easedProgress);
+    camera.updateProjectionMatrix();
     
   } else if (currentAnimState === 2) {
-    // Between animations (holding at end of first animation)
+    // Between animations
     baseCameraPos.copy(endPos);
     baseCameraRot.copy(endRot);
     
-    if (scene.fog.near !== config.fog.end.near) {
-      scene.fog.near = config.fog.end.near;
-      scene.fog.far = config.fog.end.far;
-      scene.fog.color.copy(fogEndColor);
-    }
+    scene.fog.near = config.fog.end.near;
+    scene.fog.far = config.fog.end.far;
+    scene.fog.color.copy(fogEndColor);
     
-    if (camera.fov !== endFOV) {
-      camera.fov = endFOV;
-      camera.updateProjectionMatrix();
-    }
+    camera.fov = endFOV;
+    camera.updateProjectionMatrix();
     
   } else if (currentAnimState === 3) {
     // During second animation
-    const progress = (audioTime - animStartTime2) / (animEndTime2 - animStartTime2);
+    const progress = Math.max(0, Math.min(1, (audioTime - animStartTime2) / (animEndTime2 - animStartTime2)));
     const easedProgress = progress * progress * (3 - 2 * progress);
     
     baseCameraPos.lerpVectors(startPos2, endPos2, easedProgress);
@@ -1217,28 +1328,34 @@ function updateCameraOptimized(audioTime) {
     baseCameraRot.y = THREE.MathUtils.lerp(startRot2.y, endRot2.y, easedProgress);
     baseCameraRot.z = THREE.MathUtils.lerp(startRot2.z, endRot2.z, easedProgress);
     
-    const newFOV = THREE.MathUtils.lerp(startFOV2, endFOV2, easedProgress);
-    if (Math.abs(camera.fov - newFOV) > 0.01) {
-      camera.fov = newFOV;
-      camera.updateProjectionMatrix();
-    }
+    camera.fov = THREE.MathUtils.lerp(startFOV2, endFOV2, easedProgress);
+    camera.updateProjectionMatrix();
     
-  } else {
+  } else if (currentAnimState === 4) {
     // After all animations
-    baseCameraPos.copy(endPos2);
-    baseCameraRot.copy(endRot2);
-    
-    if (camera.fov !== endFOV2) {
+    // Only set these if we didn't jump here directly
+    if (!isJumpingStates || previousState > 1) {
+      baseCameraPos.copy(endPos2);
+      baseCameraRot.copy(endRot2);
+      
       camera.fov = endFOV2;
       camera.updateProjectionMatrix();
     }
   }
   
+  // Always update camera position
   camera.position.copy(baseCameraPos);
+  
+  // Clear jump transition if we've moved to a different state
+  if (currentAnimState !== 4 && animationCache.jumpTransition) {
+    delete animationCache.jumpTransition;
+  }
+  
+  // Store the last state
   animationCache.lastCameraAnimState = currentAnimState;
 }
 
-// Separate function for animation transitions
+
 function handleAnimationTransitions(audioTime, deltaTime) {
   if (!faceUpAnimation || !walkAnimation) return;
   
