@@ -1,4 +1,4 @@
-// app.js - Optimized main application with unified shader manager
+// app.js - Optimized main application with state machine
 import * as THREE from "three";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -18,7 +18,7 @@ import {
   updateCloudUniforms,
   applyStarNestToModel,
   updateStarNestMaterials,
-   SHADER_QUALITY 
+  SHADER_QUALITY 
 } from './shader-manager.js';
 
 // Import other modules
@@ -29,11 +29,164 @@ import { DepthDrivenBlurPass } from './custom-dof.js';
 import { TextManager } from './TextManager.js';
 import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-app/webgl2';
 
-// Simple mobile detection - runs immediately
+// State Machine Class
+class AnimationStateMachine {
+  constructor() {
+    this.STATES = {
+      IDLE: 1,
+      STAR_START: 2,
+      MINIMAL: 3,
+      FINAL: 4
+    };
+    
+    this.currentState = this.STATES.IDLE;
+    this.previousState = null;
+    
+    this.transitions = {
+      toStarStart: 60,
+      toMinimal: 80,
+      toFinal: 85
+    };
+    
+    this.stateFlags = {
+      starShaderActive: false,
+      firstCameraAnimActive: false,
+      skyShaderActive: true,
+      vegetationActive: true,
+      secondCameraAnimActive: false,
+      swirlAnimActive: false
+    };
+    
+    // Swirl animation timing (relative to state 4 entry)
+    this.swirlAnimation = {
+      startDelay: 25,  // Start 25 seconds after entering FINAL state (85 + 25 = 110)
+      duration: 10,    // Run for 10 seconds (110 to 120)
+      stateEntryTime: null
+    };
+  }
+  
+  update(audioTime) {
+    let newState = this.currentState;
+    
+    if (audioTime < this.transitions.toStarStart) {
+      newState = this.STATES.IDLE;
+    } else if (audioTime < this.transitions.toMinimal) {
+      newState = this.STATES.STAR_START;
+    } else if (audioTime < this.transitions.toFinal) {
+      newState = this.STATES.MINIMAL;
+    } else {
+      newState = this.STATES.FINAL;
+    }
+    
+    if (newState !== this.currentState) {
+      this.transitionTo(newState, audioTime);
+    }
+    
+    // Update swirl animation flag based on time in FINAL state
+    if (this.currentState === this.STATES.FINAL && this.swirlAnimation.stateEntryTime !== null) {
+      const timeInState = audioTime - this.swirlAnimation.stateEntryTime;
+      const swirlStart = this.swirlAnimation.startDelay;
+      const swirlEnd = this.swirlAnimation.startDelay + this.swirlAnimation.duration;
+      
+      this.stateFlags.swirlAnimActive = timeInState >= swirlStart && timeInState <= swirlEnd;
+    }
+    
+    return this.currentState;
+  }
+  
+  transitionTo(newState, audioTime = 0) {
+    if (newState === this.currentState) return;
+    
+    this.previousState = this.currentState;
+    this.currentState = newState;
+    
+    switch (newState) {
+      case this.STATES.IDLE:
+        this.stateFlags = {
+          starShaderActive: false,
+          firstCameraAnimActive: false,
+          skyShaderActive: true,
+          vegetationActive: true,
+          secondCameraAnimActive: false,
+          swirlAnimActive: false
+        };
+        this.swirlAnimation.stateEntryTime = null;
+        break;
+        
+      case this.STATES.STAR_START:
+        this.stateFlags = {
+          starShaderActive: true,
+          firstCameraAnimActive: true,
+          skyShaderActive: true,
+          vegetationActive: true,
+          secondCameraAnimActive: false,
+          swirlAnimActive: false
+        };
+        this.swirlAnimation.stateEntryTime = null;
+        break;
+        
+      case this.STATES.MINIMAL:
+        this.stateFlags = {
+          starShaderActive: true,
+          firstCameraAnimActive: false,
+          skyShaderActive: false,
+          vegetationActive: false,
+          secondCameraAnimActive: false,
+          swirlAnimActive: false
+        };
+        this.swirlAnimation.stateEntryTime = null;
+        break;
+        
+      case this.STATES.FINAL:
+        this.stateFlags = {
+          starShaderActive: true,
+          firstCameraAnimActive: false,
+          skyShaderActive: false,
+          vegetationActive: false,
+          secondCameraAnimActive: true,
+          swirlAnimActive: false  // Will be updated based on time in state
+        };
+        // Record when we entered FINAL state for swirl timing
+        this.swirlAnimation.stateEntryTime = audioTime;
+        break;
+    }
+    
+    console.log(`State: ${this.getStateName(this.previousState)} -> ${this.getStateName(this.currentState)}`);
+  }
+  
+  getStateName(state = this.currentState) {
+    const names = Object.keys(this.STATES);
+    return names.find(key => this.STATES[key] === state) || 'UNKNOWN';
+  }
+  
+  isStarShaderActive() { return this.stateFlags.starShaderActive; }
+  isFirstCameraAnimActive() { return this.stateFlags.firstCameraAnimActive; }
+  isSkyShaderActive() { return this.stateFlags.skyShaderActive; }
+  isVegetationActive() { return this.stateFlags.vegetationActive; }
+  isSecondCameraAnimActive() { return this.stateFlags.secondCameraAnimActive; }
+  isSwirlAnimActive() { return this.stateFlags.swirlAnimActive; }
+  
+  getSwirlProgress(audioTime) {
+    if (!this.stateFlags.swirlAnimActive || this.swirlAnimation.stateEntryTime === null) {
+      return -1; // Not active
+    }
+    
+    const timeInState = audioTime - this.swirlAnimation.stateEntryTime;
+    const timeInSwirl = timeInState - this.swirlAnimation.startDelay;
+    return Math.max(0, Math.min(1, timeInSwirl / this.swirlAnimation.duration));
+  }
+  
+  isInState(stateName) {
+    return this.currentState === this.STATES[stateName];
+  }
+}
+
+// Simple mobile detection
 window.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
                   (window.innerWidth <= 768);
 
-
+// Initialize state machine
+const stateMachine = new AnimationStateMachine();
 
 let depthBlurPass;
 let riveOverlay;
@@ -50,7 +203,6 @@ let isScrubbing = false;
 let isSeekingAudio = false;
 
 let starNestMaterials = new Map();
-let vegetationStopped = false;
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, textManager;
@@ -162,48 +314,8 @@ const animEndTime2 = 110;
 let fogStartColor = new THREE.Color(config.fog.start.color);
 let fogEndColor = new THREE.Color(config.fog.end.color);
 
-
-// Add swirl animation timing
-const swirlAnimStartTime = 110; // Start at end of second camera animation
-const swirlAnimDuration = 10; // Adjust this duration as needed (in seconds)
-const swirlAnimEndTime = swirlAnimStartTime + swirlAnimDuration;
-
-function validateSecondAnimation() {
-  console.log('=== Second Animation Setup ===');
-  console.log('Animation 1 ends at:', animEndTime);
-  console.log('Animation 2 starts at:', animStartTime2);
-  console.log('Animation 2 ends at:', animEndTime2);
-  
-  console.log('\nFirst animation end state:');
-  console.log('  End Pos:', endPos);
-  console.log('  End Rot:', endRot);
-  console.log('  End FOV:', endFOV);
-  
-  console.log('\nSecond animation start state:');
-  console.log('  Start Pos2:', startPos2);
-  console.log('  Start Rot2:', startRot2);
-  console.log('  Start FOV2:', startFOV2);
-  
-  console.log('\nSecond animation end state:');
-  console.log('  End Pos2:', endPos2);
-  console.log('  End Rot2:', endRot2);
-  console.log('  End FOV2:', endFOV2);
-  
-  // Check if start of second animation matches end of first
-  const posMatch = startPos2.equals(endPos);
-  const rotMatch = startRot2.equals(endRot);
-  const fovMatch = startFOV2 === endFOV;
-  
-  if (!posMatch) console.warn('⚠️ Position mismatch between animations!');
-  if (!rotMatch) console.warn('⚠️ Rotation mismatch between animations!');
-  if (!fovMatch) console.warn('⚠️ FOV mismatch between animations!');
-  
-  if (posMatch && rotMatch && fovMatch) {
-    console.log('✅ Animation continuity verified');
-  }
-}
-  
-
+// Note: Swirl animation timing is now controlled by the state machine
+// It starts 25 seconds after entering FINAL state (at t=110) and runs for 10 seconds
 
 const textAppearTimes = [
   { time: 0.593, text: "თვალებს" }, { time: 26.593, text: "თვალებს" },
@@ -237,8 +349,6 @@ async function init() {
 
   const pixelRatio = window.isMobile ? 0.7 : 1;
   renderer.setPixelRatio(pixelRatio);
-
-  console.log(window.isMobile)
 
   renderer.setSize(window.innerWidth, window.innerHeight);
   
@@ -760,22 +870,23 @@ function updateTitlePosition(audioTime) {
     titleModel.position.z = endZ;
   }
 }
+
 function updateSwirlAnimation(audioTime) {
   if (!starNestMaterials || starNestMaterials.size === 0) return;
   
-  // Check if we're in the swirl animation timeframe
-  if (audioTime < swirlAnimStartTime) {
-    // Before animation - keep default values
+  const swirlProgress = stateMachine.getSwirlProgress(audioTime);
+  
+  if (swirlProgress < 0) {
+    // Swirl not active - use default values
     starNestMaterials.forEach(material => {
       if (material.userData?.uniforms) {
         material.userData.uniforms.swirlAmount.value = 2.5;
         material.userData.uniforms.swirlSpeed.value = 1.3;
       }
     });
-  } else if (audioTime >= swirlAnimStartTime && audioTime <= swirlAnimEndTime) {
-    // During animation - interpolate values
-    const progress = (audioTime - swirlAnimStartTime) / swirlAnimDuration;
-    const easedProgress = progress * progress * (3 - 2 * progress); // Smooth easing
+  } else {
+    // Swirl active - animate based on progress
+    const easedProgress = swirlProgress * swirlProgress * (3 - 2 * swirlProgress);
     
     const swirlAmount = THREE.MathUtils.lerp(2.5, 6.0, easedProgress);
     const swirlSpeed = THREE.MathUtils.lerp(1.3, 20.0, easedProgress);
@@ -786,18 +897,21 @@ function updateSwirlAnimation(audioTime) {
         material.userData.uniforms.swirlSpeed.value = swirlSpeed;
       }
     });
-  } else {
-    // After animation - keep final values
-    starNestMaterials.forEach(material => {
-      if (material.userData?.uniforms) {
-        material.userData.uniforms.swirlAmount.value = 6.0;
-        material.userData.uniforms.swirlSpeed.value = 20.0;
-      }
-    });
   }
 }
 
-function updateHeadLookAt(camera, deltaTime) {
+const animationCache = {
+  animationQuaternion: new THREE.Quaternion(),
+  blendedQuaternion: new THREE.Quaternion(),
+  lookQuaternion: new THREE.Quaternion(),
+  targetQuaternion: new THREE.Quaternion(),
+  baseRotationOffset: new THREE.Quaternion(),
+  lookEuler: new THREE.Euler(),
+  targetPoint: new THREE.Vector3(),
+  lastAudioDuration: 0,
+};
+
+function updateHeadLookAtOptimized(camera, deltaTime) {
   if (!headBone || !isAnimating) return;
   
   const mouseMoved = Math.abs(mouseX - lastMouseX) > MOUSE_MOVEMENT_THRESHOLD || 
@@ -821,8 +935,7 @@ function updateHeadLookAt(camera, deltaTime) {
   const maxRotationX = Math.PI / 8;
   const maxRotationY = Math.PI / 6;
   
-  const baseRotationOffset = new THREE.Quaternion();
-  baseRotationOffset.setFromEuler(new THREE.Euler(-Math.PI / 18, 0, 0));
+  animationCache.baseRotationOffset.setFromEuler(new THREE.Euler(-Math.PI / 18, 0, 0));
   
   let targetRotationY, targetRotationX;
   
@@ -853,24 +966,24 @@ function updateHeadLookAt(camera, deltaTime) {
     targetRotationX = THREE.MathUtils.lerp(mouseRotationX, 0, returnToOriginalProgress);
   }
   
-  const lookEuler = new THREE.Euler(targetRotationX, targetRotationY, 0, 'YXZ');
-  const lookQuaternion = new THREE.Quaternion();
-  lookQuaternion.setFromEuler(lookEuler);
+  animationCache.lookEuler.set(targetRotationX, targetRotationY, 0, 'YXZ');
+  animationCache.lookQuaternion.setFromEuler(animationCache.lookEuler);
   
-  const targetQuaternion = new THREE.Quaternion();
-  targetQuaternion.multiplyQuaternions(baseRotationOffset, lookQuaternion);
+  animationCache.targetQuaternion.multiplyQuaternions(
+    animationCache.baseRotationOffset, 
+    animationCache.lookQuaternion
+  );
   
-  const animationQuaternion = headBone.quaternion.clone();
+  animationCache.animationQuaternion.copy(headBone.quaternion);
   
   const animationInfluence = 0.5;
   const lookAtInfluence = 1 - animationInfluence;
   
-  const blendedQuaternion = new THREE.Quaternion();
-  blendedQuaternion.copy(animationQuaternion);
-  blendedQuaternion.slerp(targetQuaternion, lookAtInfluence);
+  animationCache.blendedQuaternion.copy(animationCache.animationQuaternion);
+  animationCache.blendedQuaternion.slerp(animationCache.targetQuaternion, lookAtInfluence);
   
   const smoothingFactor = isMouseActive ? 0.1 : 0.05;
-  headBone.quaternion.slerp(blendedQuaternion, smoothingFactor);
+  headBone.quaternion.slerp(animationCache.blendedQuaternion, smoothingFactor);
 }
 
 function setupPostProcessing() {
@@ -951,411 +1064,6 @@ function onWindowResize() {
   });
 }
 
-const animationCache = {
-  // Head tracking objects
-  animationQuaternion: new THREE.Quaternion(),
-  blendedQuaternion: new THREE.Quaternion(),
-  lookQuaternion: new THREE.Quaternion(),
-  targetQuaternion: new THREE.Quaternion(),
-  baseRotationOffset: new THREE.Quaternion(),
-  lookEuler: new THREE.Euler(),
-  
-  // Camera/spotlight objects
-  targetPoint: new THREE.Vector3(),
-  
-  // Cached values
-  lastAudioDuration: 0,
-  lastFogNear: -1,
-  lastFogFar: -1,
-  lastFOV: -1,
-  lastCameraAnimState: -1, // 0=before, 1=during, 2=after
-};
-
-
-function animate(time) {
-  if (!isAnimating) return;
-  animationId = requestAnimationFrame(animate);
-  
-  const deltaTime = lastTime !== null ? Math.min((time - lastTime) / 1000, 0.1) : 0;
-  lastTime = time;
-  
-  // Early return if delta is too small (skip frame)
-  if (deltaTime < 0.001) return;
-  
-  const audioTime = AudioController.getCurrentTime();
-  
-  // Check if we should stop most updates (after second animation ends)
-  // But allow resuming if we scrub back in timeline
-  const shouldStopMostUpdates = audioTime >= animEndTime2;
-  
-  // Track if we've moved back in timeline
-  if (shouldStopMostUpdates && animationCache.lastStoppedState) {
-    // We were stopped, check if we've gone back
-    if (audioTime < animEndTime2) {
-      // We've scrubbed back - reset stopped state
-      animationCache.lastStoppedState = false;
-      animationCache.lastCameraAnimState = -1; // Force camera update
-      console.log('Scrubbed back in timeline - resuming all updates');
-    }
-  } else if (!shouldStopMostUpdates && !animationCache.lastStoppedState) {
-    // Normal state - not stopped
-    animationCache.lastStoppedState = false;
-  } else if (shouldStopMostUpdates && !animationCache.lastStoppedState) {
-    // Just reached the stop point
-    animationCache.lastStoppedState = true;
-  }
-  
-  // Use the current state for the actual check
-  const currentlyStopped = shouldStopMostUpdates && animationCache.lastStoppedState;
-  
-  // Only update systems that should continue running
-  if (!currentlyStopped) {
-    // Update mixers
-    gltfMixer?.update(deltaTime);
-    titleMixer?.update(deltaTime);
-    
-    // Update sky shader
-    updateCloudUniforms(skyPlane.material, audioTime * 0.03, window.innerWidth, window.innerHeight);
-    
-    // Update title and text
-    updateTitlePosition(audioTime);
-    textManager?.update(audioTime, deltaTime, textAppearTimes);
-  }
-  
-  // ALWAYS update audio-related stuff for scrubbing to work
-  // Cache audio duration to avoid repeated calls
-  let audioDuration = animationCache.lastAudioDuration;
-  if (songprogressadd && Math.abs(audioDuration - AudioController.getAudioDuration()) > 0.01) {
-    audioDuration = AudioController.getAudioDuration();
-    animationCache.lastAudioDuration = audioDuration;
-  }
-
-  // Update Rive progress (ALWAYS for scrubbing)
-  if (songprogressadd && scrub && audioDuration > 0) {
-    if (scrub.value && !isScrubbing) {
-      isScrubbing = true;
-    } else if (!scrub.value && isScrubbing) {
-      isScrubbing = false;
-      const targetValue = songprogressadd.value;
-      isSeekingAudio = true;
-      
-      const seekTime = (targetValue / 100) * audioDuration;
-      AudioController.seekTo(seekTime);
-      
-      setTimeout(() => { isSeekingAudio = false; }, 50);
-    }
-    
-    if (!isScrubbing && !isSeekingAudio) {
-      const progress = (audioTime / audioDuration) * 100;
-      songprogressadd.value = progress;
-    }
-  }
-  
-  if (!currentlyStopped) {
-    // Vegetation updates
-    let vegetationCounts = { trees: 0 };
-    
-    // Check vegetation stop/resume independently
-    if (!vegetationStopped && audioTime >= animEndTime) {
-      vegetationStopped = true;
-      console.log('First camera animation finished - stopping vegetation updates');
-    } else if (vegetationStopped && audioTime < animEndTime) {
-      // Resume vegetation if we scrub back before first animation end
-      vegetationStopped = false;
-      console.log('Scrubbed back - resuming vegetation updates');
-    }
-    
-    if (!vegetationStopped) {
-      vegetationCounts = VegetationManager.updateVegetation(scene, 0.5 * (deltaTime * 60));
-    }
-    
-    AudioController.update(deltaTime, vegetationCounts.trees);
-    
-    // Handle animation transitions
-    handleAnimationTransitions(audioTime, deltaTime);
-    
-    // Update head tracking
-    updateHeadLookAtOptimized(camera, deltaTime);
-    
-    // Update spotlight
-    mouseNDC.set((mouseX / window.innerWidth) * 2, (mouseY / window.innerHeight) * -2);
-    raycaster.setFromCamera(mouseNDC, camera);
-    raycaster.ray.at(50, animationCache.targetPoint);
-    spotlight.target.position.copy(animationCache.targetPoint);
-    spotlight.position.copy(camera.position);
-    
-    // Update cursor
-    cursorPlane.update(camera, deltaTime);
-  }
-  
-  // ALWAYS update camera - don't stop camera animations
-  updateCameraOptimized(audioTime);
-
-  updateSwirlAnimation(audioTime);
-  
-  // Update mouse-based camera rotation (always active)
-  const targetRotY = (mouseX / window.innerWidth) * 0.15;
-const targetRotX = (mouseY / window.innerHeight) * 0.15;
-
-camera.rotation.x = THREE.MathUtils.clamp(
-  baseCameraRot.x + targetRotX,
-  baseCameraRot.x - 0.15,
-  baseCameraRot.x + 0.15
-);
-camera.rotation.y = baseCameraRot.y + targetRotY;
-camera.rotation.z = baseCameraRot.z;
-  
-  // Always render and update star nest materials
-  if (scene && camera) composer.render();
-//  if (scene && camera) renderer.render(scene, camera);
-  
-  // Update star nest materials - always runs
-  updateStarNestMaterials(starNestMaterials, deltaTime, mouseX, mouseY, audioTime);
-}
-
-
-
-function updateHeadLookAtOptimized(camera, deltaTime) {
-  if (!headBone || !isAnimating) return;
-  
-  const mouseMoved = Math.abs(mouseX - lastMouseX) > MOUSE_MOVEMENT_THRESHOLD || 
-                     Math.abs(mouseY - lastMouseY) > MOUSE_MOVEMENT_THRESHOLD;
-  
-  if (mouseMoved) {
-    mouseInactiveFrames = 0;
-    lastMouseX = mouseX;
-    lastMouseY = mouseY;
-  } else {
-    mouseInactiveFrames++;
-  }
-  
-  const isMouseActive = mouseInactiveFrames < MOUSE_INACTIVE_THRESHOLD;
-  const returnToOriginalProgress = isMouseActive ? 0 : 
-    Math.min((mouseInactiveFrames - MOUSE_INACTIVE_THRESHOLD) / 60, 1);
-  
-  const normalizedMouseX = -(mouseX / (window.innerWidth * 0.5));
-  const normalizedMouseY = -(mouseY / (window.innerHeight * 0.5));
-  
-  const maxRotationX = Math.PI / 8;
-  const maxRotationY = Math.PI / 6;
-  
-  // Reuse cached objects instead of creating new ones
-  animationCache.baseRotationOffset.setFromEuler(new THREE.Euler(-Math.PI / 18, 0, 0));
-  
-  let targetRotationY, targetRotationX;
-  
-  if (isMouseActive && returnToOriginalProgress === 0) {
-    targetRotationY = THREE.MathUtils.clamp(
-      -normalizedMouseX * maxRotationY,
-      -maxRotationY,
-      maxRotationY
-    );
-    targetRotationX = THREE.MathUtils.clamp(
-      -normalizedMouseY * maxRotationX,
-      -maxRotationX,
-      maxRotationX
-    );
-  } else {
-    const mouseRotationY = THREE.MathUtils.clamp(
-      -normalizedMouseX * maxRotationY,
-      -maxRotationY,
-      maxRotationY
-    );
-    const mouseRotationX = THREE.MathUtils.clamp(
-      -normalizedMouseY * maxRotationX,
-      -maxRotationX,
-      maxRotationX
-    );
-    
-    targetRotationY = THREE.MathUtils.lerp(mouseRotationY, 0, returnToOriginalProgress);
-    targetRotationX = THREE.MathUtils.lerp(mouseRotationX, 0, returnToOriginalProgress);
-  }
-  
-  // Reuse cached Euler and Quaternion objects
-  animationCache.lookEuler.set(targetRotationX, targetRotationY, 0, 'YXZ');
-  animationCache.lookQuaternion.setFromEuler(animationCache.lookEuler);
-  
-  animationCache.targetQuaternion.multiplyQuaternions(
-    animationCache.baseRotationOffset, 
-    animationCache.lookQuaternion
-  );
-  
-  // Copy instead of clone
-  animationCache.animationQuaternion.copy(headBone.quaternion);
-  
-  const animationInfluence = 0.5;
-  const lookAtInfluence = 1 - animationInfluence;
-  
-  animationCache.blendedQuaternion.copy(animationCache.animationQuaternion);
-  animationCache.blendedQuaternion.slerp(animationCache.targetQuaternion, lookAtInfluence);
-  
-  const smoothingFactor = isMouseActive ? 0.1 : 0.05;
-  headBone.quaternion.slerp(animationCache.blendedQuaternion, smoothingFactor);
-}
-
-
-
-function updateCameraOptimized(audioTime) {
-  let currentAnimState;
-  
-  if (audioTime < animStartTime) {
-    currentAnimState = 0; // Before any animation
-  } else if (audioTime <= animEndTime) {
-    currentAnimState = 1; // During first animation
-  } else if (audioTime < animStartTime2) {
-    currentAnimState = 2; // Between animations
-  } else if (audioTime <= animEndTime2) {
-    currentAnimState = 3; // During second animation
-  } else {
-    currentAnimState = 4; // After all animations
-  }
-  
-  // Detect large jumps that skip states
-  const previousState = animationCache.lastCameraAnimState;
-  const isJumpingStates = Math.abs(currentAnimState - previousState) > 1;
-  
-  if (isJumpingStates && currentAnimState === 4) {
-    console.log(`Direct jump from state ${previousState} to state 4 detected at time ${audioTime.toFixed(2)}`);
-    
-    // When jumping directly to state 4, we need to instantly set all the intermediate values
-    // to their final states to avoid visual jumps
-    
-    // First, ensure fog is at end state
-    scene.fog.near = config.fog.end.near;
-    scene.fog.far = config.fog.end.far;
-    scene.fog.color.copy(fogEndColor);
-    
-    // If jumping from early states (0 or 1), we need to smoothly transition
-    // to the final position rather than jumping directly
-    if (previousState <= 1) {
-      // Option 1: Instant jump to final position (if you want immediate positioning)
-      baseCameraPos.copy(endPos2);
-      baseCameraRot.copy(endRot2);
-      camera.fov = endFOV2;
-      
-      // Option 2: If you want a smoother transition, you could animate over a few frames
-      // Uncomment this section if you prefer smooth transition:
-      /*
-      if (!animationCache.jumpTransition) {
-        animationCache.jumpTransition = {
-          startPos: camera.position.clone(),
-          startRot: camera.rotation.clone(),
-          startFOV: camera.fov,
-          startTime: audioTime,
-          duration: 0.5 // Half second transition
-        };
-      }
-      */
-    }
-    
-    camera.updateProjectionMatrix();
-  }
-  
-  // Handle smooth transition if enabled (Option 2 from above)
-  if (animationCache.jumpTransition && currentAnimState === 4) {
-    const jumpProgress = Math.min(1, (audioTime - animationCache.jumpTransition.startTime) / animationCache.jumpTransition.duration);
-    
-    if (jumpProgress < 1) {
-      // Still transitioning
-      const easedProgress = jumpProgress * jumpProgress * (3 - 2 * jumpProgress);
-      
-      baseCameraPos.lerpVectors(animationCache.jumpTransition.startPos, endPos2, easedProgress);
-      baseCameraRot.x = THREE.MathUtils.lerp(animationCache.jumpTransition.startRot.x, endRot2.x, easedProgress);
-      baseCameraRot.y = THREE.MathUtils.lerp(animationCache.jumpTransition.startRot.y, endRot2.y, easedProgress);
-      baseCameraRot.z = THREE.MathUtils.lerp(animationCache.jumpTransition.startRot.z, endRot2.z, easedProgress);
-      
-      camera.fov = THREE.MathUtils.lerp(animationCache.jumpTransition.startFOV, endFOV2, easedProgress);
-      camera.updateProjectionMatrix();
-      
-      camera.position.copy(baseCameraPos);
-      animationCache.lastCameraAnimState = currentAnimState;
-      return; // Exit early during transition
-    } else {
-      // Transition complete
-      delete animationCache.jumpTransition;
-    }
-  }
-  
-  // Normal state handling
-  if (currentAnimState === 0) {
-    // Before any animation
-    baseCameraPos.copy(startPos);
-    baseCameraRot.copy(startRot);
-    
-    scene.fog.near = config.fog.start.near;
-    scene.fog.far = config.fog.start.far;
-    scene.fog.color.copy(fogStartColor);
-    
-    camera.fov = startFOV;
-    camera.updateProjectionMatrix();
-    
-  } else if (currentAnimState === 1) {
-    // During first animation
-    const progress = Math.max(0, Math.min(1, (audioTime - animStartTime) / (animEndTime - animStartTime)));
-    const easedProgress = progress * progress * (3 - 2 * progress);
-    
-    baseCameraPos.lerpVectors(startPos, endPos, easedProgress);
-    baseCameraRot.x = THREE.MathUtils.lerp(startRot.x, endRot.x, easedProgress);
-    baseCameraRot.y = THREE.MathUtils.lerp(startRot.y, endRot.y, easedProgress);
-    baseCameraRot.z = THREE.MathUtils.lerp(startRot.z, endRot.z, easedProgress);
-    
-    scene.fog.near = THREE.MathUtils.lerp(config.fog.start.near, config.fog.end.near, easedProgress);
-    scene.fog.far = THREE.MathUtils.lerp(config.fog.start.far, config.fog.end.far, easedProgress);
-    scene.fog.color.lerpColors(fogStartColor, fogEndColor, easedProgress);
-    
-    camera.fov = THREE.MathUtils.lerp(startFOV, endFOV, easedProgress);
-    camera.updateProjectionMatrix();
-    
-  } else if (currentAnimState === 2) {
-    // Between animations
-    baseCameraPos.copy(endPos);
-    baseCameraRot.copy(endRot);
-    
-    scene.fog.near = config.fog.end.near;
-    scene.fog.far = config.fog.end.far;
-    scene.fog.color.copy(fogEndColor);
-    
-    camera.fov = endFOV;
-    camera.updateProjectionMatrix();
-    
-  } else if (currentAnimState === 3) {
-    // During second animation
-    const progress = Math.max(0, Math.min(1, (audioTime - animStartTime2) / (animEndTime2 - animStartTime2)));
-    const easedProgress = progress * progress * (3 - 2 * progress);
-    
-    baseCameraPos.lerpVectors(startPos2, endPos2, easedProgress);
-    baseCameraRot.x = THREE.MathUtils.lerp(startRot2.x, endRot2.x, easedProgress);
-    baseCameraRot.y = THREE.MathUtils.lerp(startRot2.y, endRot2.y, easedProgress);
-    baseCameraRot.z = THREE.MathUtils.lerp(startRot2.z, endRot2.z, easedProgress);
-    
-    camera.fov = THREE.MathUtils.lerp(startFOV2, endFOV2, easedProgress);
-    camera.updateProjectionMatrix();
-    
-  } else if (currentAnimState === 4) {
-    // After all animations
-    // Only set these if we didn't jump here directly
-    if (!isJumpingStates || previousState > 1) {
-      baseCameraPos.copy(endPos2);
-      baseCameraRot.copy(endRot2);
-      
-      camera.fov = endFOV2;
-      camera.updateProjectionMatrix();
-    }
-  }
-  
-  // Always update camera position
-  camera.position.copy(baseCameraPos);
-  
-  // Clear jump transition if we've moved to a different state
-  if (currentAnimState !== 4 && animationCache.jumpTransition) {
-    delete animationCache.jumpTransition;
-  }
-  
-  // Store the last state
-  animationCache.lastCameraAnimState = currentAnimState;
-}
-
-
 function handleAnimationTransitions(audioTime, deltaTime) {
   if (!faceUpAnimation || !walkAnimation) return;
   
@@ -1424,6 +1132,154 @@ function handleAnimationTransitions(audioTime, deltaTime) {
       walkAnimation.timeScale = 0.7;
     }
   }
+}
+
+function animate(time) {
+  if (!isAnimating) return;
+  animationId = requestAnimationFrame(animate);
+  
+  const deltaTime = lastTime !== null ? Math.min((time - lastTime) / 1000, 0.1) : 0;
+  lastTime = time;
+  
+  if (deltaTime < 0.001) return;
+  
+  const audioTime = AudioController.getCurrentTime();
+  
+  // Update state machine
+  stateMachine.update(audioTime);
+  
+  // Always running updates
+  gltfMixer?.update(deltaTime);
+  titleMixer?.update(deltaTime);
+  updateTitlePosition(audioTime);
+  textManager?.update(audioTime, deltaTime, textAppearTimes);
+  handleAnimationTransitions(audioTime, deltaTime);
+  updateHeadLookAtOptimized(camera, deltaTime);
+  cursorPlane.update(camera, deltaTime);
+  
+  // State-dependent updates
+  
+  // 1. Star shader
+  if (stateMachine.isStarShaderActive()) {
+    updateStarNestMaterials(starNestMaterials, deltaTime, mouseX, mouseY, audioTime);
+  }
+  
+  // 2. Sky shader
+  if (stateMachine.isSkyShaderActive()) {
+    updateCloudUniforms(skyPlane.material, audioTime * 0.03, window.innerWidth, window.innerHeight);
+  }
+  
+  // 3. Vegetation
+  if (stateMachine.isVegetationActive()) {
+    const vegetationCounts = VegetationManager.updateVegetation(scene, 0.5 * (deltaTime * 60));
+    AudioController.update(deltaTime, vegetationCounts.trees);
+  }
+  
+  // 4. Swirl animation (controlled by state machine)
+  if (stateMachine.isSwirlAnimActive()) {
+    updateSwirlAnimation(audioTime);
+  }
+  
+  // 4. Camera animations
+  if (stateMachine.isFirstCameraAnimActive()) {
+    const progress = Math.max(0, Math.min(1, (audioTime - animStartTime) / (animEndTime - animStartTime)));
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    
+    baseCameraPos.lerpVectors(startPos, endPos, easedProgress);
+    baseCameraRot.x = THREE.MathUtils.lerp(startRot.x, endRot.x, easedProgress);
+    baseCameraRot.y = THREE.MathUtils.lerp(startRot.y, endRot.y, easedProgress);
+    baseCameraRot.z = THREE.MathUtils.lerp(startRot.z, endRot.z, easedProgress);
+    
+    scene.fog.near = THREE.MathUtils.lerp(config.fog.start.near, config.fog.end.near, easedProgress);
+    scene.fog.far = THREE.MathUtils.lerp(config.fog.start.far, config.fog.end.far, easedProgress);
+    scene.fog.color.lerpColors(fogStartColor, fogEndColor, easedProgress);
+    
+    camera.fov = THREE.MathUtils.lerp(startFOV, endFOV, easedProgress);
+    camera.updateProjectionMatrix();
+  } else if (stateMachine.isSecondCameraAnimActive()) {
+    const progress = Math.max(0, Math.min(1, (audioTime - animStartTime2) / (animEndTime2 - animStartTime2)));
+    const easedProgress = progress * progress * (3 - 2 * progress);
+    
+    baseCameraPos.lerpVectors(startPos2, endPos2, easedProgress);
+    baseCameraRot.x = THREE.MathUtils.lerp(startRot2.x, endRot2.x, easedProgress);
+    baseCameraRot.y = THREE.MathUtils.lerp(startRot2.y, endRot2.y, easedProgress);
+    baseCameraRot.z = THREE.MathUtils.lerp(startRot2.z, endRot2.z, easedProgress);
+    
+    camera.fov = THREE.MathUtils.lerp(startFOV2, endFOV2, easedProgress);
+    camera.updateProjectionMatrix();
+  } else {
+    // Set static camera position based on state
+    if (stateMachine.isInState('IDLE')) {
+      baseCameraPos.copy(startPos);
+      baseCameraRot.copy(startRot);
+      camera.fov = startFOV;
+      scene.fog.near = config.fog.start.near;
+      scene.fog.far = config.fog.start.far;
+      scene.fog.color.copy(fogStartColor);
+    } else if (stateMachine.isInState('MINIMAL')) {
+      baseCameraPos.copy(endPos);
+      baseCameraRot.copy(endRot);
+      camera.fov = endFOV;
+      scene.fog.near = config.fog.end.near;
+      scene.fog.far = config.fog.end.far;
+      scene.fog.color.copy(fogEndColor);
+    } else if (stateMachine.isInState('FINAL') && audioTime > animEndTime2) {
+      baseCameraPos.copy(endPos2);
+      baseCameraRot.copy(endRot2);
+      camera.fov = endFOV2;
+    }
+    camera.updateProjectionMatrix();
+  }
+  
+  // Update spotlight
+  mouseNDC.set((mouseX / window.innerWidth) * 2, (mouseY / window.innerHeight) * -2);
+  raycaster.setFromCamera(mouseNDC, camera);
+  raycaster.ray.at(50, animationCache.targetPoint);
+  spotlight.target.position.copy(animationCache.targetPoint);
+  spotlight.position.copy(camera.position);
+  
+  // Mouse-based camera rotation
+  const targetRotY = (mouseX / window.innerWidth) * 0.15;
+  const targetRotX = (mouseY / window.innerHeight) * 0.15;
+  camera.rotation.x = THREE.MathUtils.clamp(
+    baseCameraRot.x + targetRotX,
+    baseCameraRot.x - 0.15,
+    baseCameraRot.x + 0.15
+  );
+  camera.rotation.y = baseCameraRot.y + targetRotY;
+  camera.rotation.z = baseCameraRot.z;
+  
+  camera.position.copy(baseCameraPos);
+  
+  // Audio progress
+  let audioDuration = animationCache.lastAudioDuration;
+  if (songprogressadd && Math.abs(audioDuration - AudioController.getAudioDuration()) > 0.01) {
+    audioDuration = AudioController.getAudioDuration();
+    animationCache.lastAudioDuration = audioDuration;
+  }
+  
+  if (songprogressadd && scrub && audioDuration > 0) {
+    if (scrub.value && !isScrubbing) {
+      isScrubbing = true;
+    } else if (!scrub.value && isScrubbing) {
+      isScrubbing = false;
+      const targetValue = songprogressadd.value;
+      isSeekingAudio = true;
+      
+      const seekTime = (targetValue / 100) * audioDuration;
+      AudioController.seekTo(seekTime);
+      
+      setTimeout(() => { isSeekingAudio = false; }, 50);
+    }
+    
+    if (!isScrubbing && !isSeekingAudio) {
+      const progress = (audioTime / audioDuration) * 100;
+      songprogressadd.value = progress;
+    }
+  }
+  
+  // Render
+  if (scene && camera) composer.render();
 }
 
 function startAnimation() {
