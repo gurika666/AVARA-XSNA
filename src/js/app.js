@@ -344,7 +344,7 @@ async function init() {
   renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvas });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
-  renderer.outputEncoding = THREE.sRGBEncoding;
+  // renderer.outputEncoding = THREE.sRGBEncoding;
 
   const pixelRatio = window.isMobile ? 0.7 : 1;
   renderer.setPixelRatio(pixelRatio);
