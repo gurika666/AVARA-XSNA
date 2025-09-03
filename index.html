@@ -6,6 +6,7 @@
 <title>xsna</title>
 <style>
 body {
+
   margin: 0;
   overflow: hidden;
   background: #000fff;
@@ -13,18 +14,6 @@ body {
   &.clicked {
     background: #000000;
   }
-}
-
-
-.rive {
-  position: fixed;
-  display: block;
-  width: 100vw;
-  height: 100svh;
-  z-index: 2;
-  filter: 
-    drop-shadow(2px 0 0 rgba(255, 0, 0, 0.5))
-    drop-shadow(-2px 0 0 rgba(0, 255, 255, 0.5));
 }
 
 .vignette {
@@ -64,7 +53,27 @@ body {
   animation: scanlines-move 2s linear infinite;
 }
 
+.rive {
+  position: fixed;
+  display: block;
+  width: 100vw;
+  height: 100svh;
+  z-index: 2;
+  filter: 
+    drop-shadow(2px 0 0 rgba(255, 0, 0, 0.5))
+    drop-shadow(-2px 0 0 rgba(0, 255, 255, 0.5));
+}
 
+
+
+.main-animation {
+  position: fixed;
+  display: block;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100svh;
+}
 /* Mobile scanlines - 2px spacing */
 @media (max-width: 768px) {
   .scanlines {
@@ -78,14 +87,7 @@ body {
   }
 }
 
-.main-animation {
-  position: fixed;
-  display: block;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100svh;
-}
+
 
 @keyframes scanlines-move {
   0% {
