@@ -706,8 +706,8 @@ async function loadRiveOverlay() {
           // document.body.classList.add('spotify');
 
           console.log('Spotify event received');
-          window.open('https://open.spotify.com/artist/5UZEQzbK7ktedLBHvZ2wkJ?si=heZI_ZZFRO6ms4xBZURn7A', '_blank');
-        
+
+        window.location.assign('https://open.spotify.com/artist/5UZEQzbK7ktedLBHvZ2wkJ?si=heZI_ZZFRO6ms4xBZURn7A', '_blank');
         }
       });
 
@@ -717,7 +717,7 @@ async function loadRiveOverlay() {
           // document.body.classList.add('instagram');
 
           console.log('Instagram event received');
-          window.open('https://www.instagram.com/avara.band?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==', '_blank');
+         window.location.assign('https://www.instagram.com/avara.band?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==', '_top');
         
         }
       });
