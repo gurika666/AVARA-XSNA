@@ -26,7 +26,7 @@ import * as AudioController from './audioController.js';
 import * as VegetationManager from './vegetation-manager.js';
 import * as LoadingManager from './loading-manager.js';
 import { DepthDrivenBlurPass } from './custom-dof.js';
-import { TextManager } from './TextManager.js';
+
 import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-app/webgl2';
 
 // State Machine Class
@@ -201,17 +201,17 @@ let songprogressadd;
 let scrub;
 let isScrubbing = false;
 let isSeekingAudio = false;
+let lyricText, spot;
 
 let starNestMaterials = new Map();
 
 // Globals
-let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass, textManager;
+let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass;
 let isAnimating = false, animationId = null, lastTime = null, isSetupComplete = false;
 let skyPlane, gltfMixer, gltfModel, gltfAnimationActions = [];
 let spotlight, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2();
 let mouseX = 0, mouseY = 0, font;
 let cursorPlane = new CursorPlane();
-let titleModel = null;
 let titleMixer;
 let textmaterial;
 const canvas = document.querySelector('.main-animation');
@@ -318,13 +318,12 @@ let fogEndColor = new THREE.Color(config.fog.end.color);
 // It starts 25 seconds after entering FINAL state (at t=110) and runs for 10 seconds
 
 const textAppearTimes = [
-  { time: 0.593, text: "თვალებს" }, { time: 26.593, text: "თვალებს" },
-  { time: 27.593, text: "ადევს" }, { time: 28.593, text: "ნამი" },
-  { time: 29.777, text: "ზღვაა" }, { time: 30.777, text: "ძაან" },
-  { time: 31.777, text: "წყნარი" }, { time: 32.890, text: "ცაზე" },
-  { time: 33.890, text: "ფანტავს ელვებს" }, { time: 35, text: "დაუოკებელი" },
-  { time: 36.243, text: "ბრაზი" }, { time: 37.8, text: "ახალს" },
-  { time: 38.8, text: "არაფერს" }, { time: 39.8, text: "არ გეტყვი" }
+  { time: 26.593, text: "Tvalebs Adevs Nami" },
+  { time: 29.777, text: "Zgvaa Dzaan Wynari" },
+  { time: 32.890, text: "Caze Fantavs Elvebs" },
+  { time: 35, text: "Dauokebeli Brazi" },
+  { time: 37.8, text: "Axals Arafers Ar Getyvi" },
+ 
 ];
 
 // Resources to be loaded
@@ -358,8 +357,7 @@ async function init() {
   
   // Initialize controllers
   AudioController.init({ 
-    onTimeUpdate: (t, dt) => textManager?.update(t, dt, textAppearTimes),
-    onScrubComplete: t => textManager?.reset(t, textAppearTimes)
+  
   });
   
   // Setup event listeners
@@ -503,7 +501,7 @@ async function loadAllResources() {
   const remainingTasks = [
     loadFont('fonts/Monarch_Regular.json', manager),
     loadGLB(config.glb.path, manager),
-    loadTitleGLB(config.titleGlb.path, manager),
+    // loadTitleGLB(config.titleGlb.path, manager),
     initVegetation(manager)
   ];
   
@@ -632,45 +630,6 @@ async function loadGLB(path, manager) {
   });
 }
 
-async function loadTitleGLB(path, manager) {
-  return new Promise((resolve, reject) => {
-    new GLTFLoader(manager).load(
-      path,
-      gltf => {
-        titleModel = gltf.scene;
-        
-        titleModel.traverse(child => {
-          if (child.isMesh) {
-            child.material = textmaterial;
-          }
-        });
-        
-        const { position: p, scale: s, rotation: r } = config.titleGlb;
-        titleModel.position.copy(p);
-        titleModel.scale.copy(s);
-        titleModel.rotation.copy(r);
-        
-        // scene.add(titleModel);
-        
-        if (gltf.animations?.length) {
-          titleMixer = new THREE.AnimationMixer(titleModel);
-          gltf.animations.forEach(clip => {
-            const action = titleMixer.clipAction(clip);
-            action.setLoop(THREE.LoopRepeat);
-            action.play();
-          });
-          
-          titleModel.userData.mixer = titleMixer;
-        }
-        
-        resources.titleGlb = titleModel;
-        resolve();
-      },
-      undefined,
-      error => reject(new Error('Failed to load title GLB'))
-    );
-  });
-}
 
 async function loadAudio(path) {
   return new Promise((resolve) => {
@@ -718,7 +677,7 @@ async function loadRiveOverlay() {
     canvas: rivecanvas,
     autoplay: true,
     autoBind: true,
-    artboard: 'Artboard',
+    // artboard: 'Artboard',
     stateMachines: 'State Machine 1',
     layout: new Layout({
       fit: Fit.Layout,
@@ -733,9 +692,36 @@ async function loadRiveOverlay() {
       width = viewmodel.number('width');
       songprogressadd = viewmodel.number('progressnum');
       scrub = viewmodel.boolean('scrub');
+      lyricText = viewmodel.string('lyrics');
+    
       
       stoppedInput = inputs.find(i => i.name === 'stopped');
       loadedInput = inputs.find(i => i.name === 'Loaded');
+
+
+
+
+    rive.on(EventType.RiveEvent || 'spotifyevent', (event) => {
+        if (event.data.name === 'spotify') {
+          // document.body.classList.add('spotify');
+
+          console.log('Spotify event received');
+          window.open('https://open.spotify.com/artist/5UZEQzbK7ktedLBHvZ2wkJ?si=heZI_ZZFRO6ms4xBZURn7A', '_blank');
+        
+        }
+      });
+
+
+      rive.on(EventType.RiveEvent || 'instaevent', (event) => {
+        if (event.data.name === 'instagram') {
+          // document.body.classList.add('instagram');
+
+          console.log('Instagram event received');
+          window.open('https://www.instagram.com/avara.band?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==', '_blank');
+        
+        }
+      });
+
 
       rive.on(EventType.RiveEvent || 'riveevent', (event) => {
         if (event && event.data && event.data.name === 'click') {
@@ -743,8 +729,14 @@ async function loadRiveOverlay() {
           if (isSetupComplete) {
             togglePlayPause();
           }
+         
         }
       });
+
+     
+  
+        
+      
 
       if (width) {
         width.value = window.innerWidth; 
@@ -761,6 +753,26 @@ async function loadRiveOverlay() {
       }
     }
   });
+
+
+}
+
+function updateLyricText(audioTime) {
+  if (!lyricText) return;
+  
+  // Find the current text that should be displayed
+  let currentText = "";
+  
+  // Go through the times in reverse to find the most recent text
+  for (let i = textAppearTimes.length - 1; i >= 0; i--) {
+    if (audioTime >= textAppearTimes[i].time) {
+      currentText = textAppearTimes[i].text;
+      break;
+    }
+  }
+  
+  // Update the Rive text variable
+ lyricText.value = currentText;
 }
 
 function togglePlayPause() {
@@ -809,23 +821,11 @@ async function completeSetup() {
     cursorPlane.plane.layers.set(LAYERS.DOFIGNORE);
   }
   
-  textManager = new TextManager();
+ 
   
-  textManager.setTextConfig({
-    size: 0.8,
-    height: 0.05,
-    depth: 0.1,
-    startZ: -100,
-    endZ: 10,
-    yPosition: 2,
-    xSpread: 15
-  });
-  
-  textManager.setMoveSpeed(15);
 
-  if (resources.txthdr) {
-    textManager.setMaterial(textmaterial);
-  }
+
+
   
   VegetationManager.createInitialVegetationWhenReady(scene);
   
@@ -855,21 +855,7 @@ function setupHeadTracking() {
   }
 }
 
-function updateTitlePosition(audioTime) {
-  if (!titleModel) return;
-  
-  const { startTime, endTime, startZ, endZ } = config.titleGlb.animation;
-  
-  if (audioTime < startTime) {
-    titleModel.position.z = startZ;
-  } else if (audioTime >= startTime && audioTime <= endTime) {
-    const progress = (audioTime - startTime) / (endTime - startTime);
-    const easedProgress = progress * progress * (3 - 2 * progress);
-    titleModel.position.z = THREE.MathUtils.lerp(startZ, endZ, easedProgress);
-  } else {
-    titleModel.position.z = endZ;
-  }
-}
+
 
 function updateSwirlAnimation(audioTime) {
   if (!starNestMaterials || starNestMaterials.size === 0) return;
@@ -1150,9 +1136,8 @@ function animate(time) {
   
   // Always running updates
   gltfMixer?.update(deltaTime);
-  titleMixer?.update(deltaTime);
-  updateTitlePosition(audioTime);
-  textManager?.update(audioTime, deltaTime, textAppearTimes);
+ 
+
   handleAnimationTransitions(audioTime, deltaTime);
   updateHeadLookAtOptimized(camera, deltaTime);
   cursorPlane.update(camera, deltaTime);
@@ -1277,7 +1262,8 @@ function animate(time) {
       songprogressadd.value = progress;
     }
   }
-  
+  updateLyricText(audioTime);
+
   // Render
   if (scene && camera) composer.render();
 }

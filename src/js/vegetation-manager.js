@@ -1,7 +1,7 @@
 // vegetation-manager.js - Optimized with proper memory management
 import * as THREE from "three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import * as GUI from './gui.js';
+
 
 // Constants
 const BLADE_WIDTH = 0.2, BLADE_HEIGHT = 1.2, BLADE_HEIGHT_VARIATION = 0.8, BLADE_VERTEX_COUNT = 5, BLADE_TIP_OFFSET = 0.1;
@@ -453,13 +453,10 @@ export function init(scene, manager) {
         }
       });
       resourcesLoaded.trees = true;
-      GUI.updateLoadingProgress('mesh', 100);
+   
     },
-    xhr => GUI.updateLoadingProgress('mesh', xhr.loaded / xhr.total * 100),
-    error => { 
-      console.error('Error loading trees:', error); 
-      resourcesLoaded.trees = true; 
-    }
+  
+
   );
 }
 
