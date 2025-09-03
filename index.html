@@ -15,14 +15,6 @@ body {
   }
 }
 
-.main-animation {
-  position: fixed;
-  display: block;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100svh;
-}
 
 .rive {
   position: fixed;
@@ -71,6 +63,8 @@ body {
   mix-blend-mode: overlay;
   animation: scanlines-move 2s linear infinite;
 }
+
+
 /* Mobile scanlines - 2px spacing */
 @media (max-width: 768px) {
   .scanlines {
@@ -82,6 +76,15 @@ body {
       transparent 4px
     );
   }
+}
+
+.main-animation {
+  position: fixed;
+  display: block;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100svh;
 }
 
 @keyframes scanlines-move {
