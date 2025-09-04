@@ -266,19 +266,8 @@ const config = {
     scale: new THREE.Vector3(1, 1, 1),
     rotation: new THREE.Euler(0, 0, 0),
     autoplay: true
-  },
-  titleGlb: {
-    path: 'mesh/title.glb',
-    position: new THREE.Vector3(0, 4, -18),
-    scale: new THREE.Vector3(0.7, 0.7, 0.7),
-    rotation: new THREE.Euler(-0.2, 0, 0),
-    animation: {
-      startTime: 0,
-      endTime: 10,
-      startZ: -18,
-      endZ: 10
-    }
   }
+
 };
 
 // Animation timing
@@ -332,7 +321,6 @@ const resources = {
   txthdr: null,
   font: null,
   glb: null,
-  titleGlb: null,
   audio: null,
   vegetation: null
 };
@@ -490,7 +478,7 @@ async function loadAllResources() {
   try {
     await Promise.all([
       loadHDRTexture('images/txt.hdr', 'txthdr', manager),
-      loadHDRTexture('images/01.hdr', 'hdri', manager)
+      
     ]);
     updateProgress();
   } catch (error) {
@@ -501,7 +489,7 @@ async function loadAllResources() {
   const remainingTasks = [
     loadFont('fonts/Monarch_Regular.json', manager),
     loadGLB(config.glb.path, manager),
-    // loadTitleGLB(config.titleGlb.path, manager),
+ 
     initVegetation(manager)
   ];
   
