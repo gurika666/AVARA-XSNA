@@ -335,7 +335,7 @@ async function init() {
   // renderer.outputEncoding = THREE.sRGBEncoding;
 
   const pixelRatio = window.isMobile ? 0.7 : 1;
-  renderer.setPixelRatio(pixelRatio);
+  renderer.setPixelRatio(0.6);
 
   renderer.setSize(window.innerWidth, window.innerHeight);
   

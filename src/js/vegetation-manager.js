@@ -6,12 +6,15 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 // Constants
 const BLADE_WIDTH = 0.2, BLADE_HEIGHT = 1.2, BLADE_HEIGHT_VARIATION = 0.8, BLADE_VERTEX_COUNT = 5, BLADE_TIP_OFFSET = 0.1;
 const GRASS_SPREAD = 10, TREE_SPREAD = 20, MIN_DISTANCE = 5, REMOVAL_Z = 20, GENERATION_Z = -70;
-const MIN_PATCH_SIZE = 10, MAX_PATCH_SIZE = 15, MIN_BLADE_COUNT = 500, MAX_BLADE_COUNT = 600;
+const MIN_PATCH_SIZE = 10, MAX_PATCH_SIZE = 15, MIN_BLADE_COUNT = 30, MAX_BLADE_COUNT = 100;
 const TREE_CLEARANCE_FROM_CENTER = 7;
 
 // Pool configuration
-const MAX_POOL_SIZE = 20; // Maximum objects to keep in each pool
+const MAX_POOL_SIZE = 10; // Maximum objects to keep in each pool
 const GRASS_POOL_CATEGORIES = 3; // Small, medium, large grass patches
+
+const TREE_ROWS = 5;
+const TREES_PER_ROW_ATTEMPTS = 20;
 
 // State
 let grassPatches = [], trees = [], treeModels = [], resourcesLoaded = { trees: false, grass: false };
@@ -339,7 +342,7 @@ function createInitialVegetation(scene) {
   trees = [];
   
   // Create grass patches
-  createGrassPatch(scene, 0, -40, MAX_PATCH_SIZE + 5, MAX_BLADE_COUNT + 200);
+  createGrassPatch(scene, 0, -40, MAX_PATCH_SIZE, MAX_BLADE_COUNT);
   
   for (let z = -20; z > -200; z -= 25) {
     const patchesInRow = Math.max(2, Math.floor(6 * (1 - Math.abs(z) / 200)));
@@ -355,9 +358,9 @@ function createInitialVegetation(scene) {
   }
   
   // Create trees
-  for (let i = 0; i < 10; i++) {
-    const z = -100 - (i * 10);
-    for (let j = 0; j < 30; j++) {
+  for (let i = 0; i < TREE_ROWS; i++) {
+  const z = -100 - (i * 10);
+  for (let j = 0; j < TREES_PER_ROW_ATTEMPTS; j++) {
       const x = (Math.random() * 2 - 1) * TREE_SPREAD;
       if (!trees.some(t => 
         Math.pow(t.position.x - x, 2) + 
