@@ -9,6 +9,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader';
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
+import EndScene from './end-scene.js';
 
 // Import unified shader manager
 import { 
@@ -188,6 +189,9 @@ window.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini
 // Initialize state machine
 const stateMachine = new AnimationStateMachine();
 
+
+let endScene = null;
+
 let depthBlurPass;
 let riveOverlay;
 let rive;
@@ -346,40 +350,7 @@ const resources = {
   audio: null,
   vegetation: null
 };
-let deathObject = null;
-let loversObject = null;
-let magicianObject = null;
 
-async function loadVHSObjects() {
-  return new Promise((resolve, reject) => {
-    new GLTFLoader().load(
-      'mesh/vhs.glb',
-      (gltf) => {
-        // Find the three objects in the loaded model
-        gltf.scene.traverse((child) => {
-          if (child.name === 'death') {
-            deathObject = child;
-          } else if (child.name === 'lovers') {
-            loversObject = child;
-          } else if (child.name === 'magician') {
-            magicianObject = child;
-          }
-        });
-
-
-        
-
-        resolve();
-      },
-      undefined,
-      (error) => {
-        console.error('Failed to load VHS model:', error);
-        reject(error);
-      }
-    );
-  });
-
-}
 
 
 async function init() {
@@ -846,7 +817,6 @@ rive.on(EventType.RiveEvent || 'vhs3event', (event) => {
 }
 
 
-
 function updateFocusBooleans(audioTime) {
   // Check and trigger focus1
   if (!focus1Triggered && !vhs1collected && audioTime >= focusTimes.focus1Time) {
@@ -987,7 +957,7 @@ async function completeSetup() {
   if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
 
 
-  await loadVHSObjects();
+
 
 
   setupPostProcessing();
@@ -1022,6 +992,11 @@ async function completeSetup() {
   VegetationManager.createInitialVegetationWhenReady(scene);
   
   isSetupComplete = true;
+
+
+    endScene = new EndScene(resources.txthdr);
+  await endScene.init();
+  endScene.show();
 
   if (loadedInput) {
     loadedInput.value = true;
@@ -1500,6 +1475,13 @@ if (finished && audioDuration > 0) {
     // Song just finished
     finished.value = true;
     isAnimating = false;  // Stop the animation loop
+
+
+      if (endScene) {
+        endScene.show();
+      }
+
+
     if (animationId) {
       cancelAnimationFrame(animationId);
       animationId = null;
@@ -1509,6 +1491,12 @@ if (finished && audioDuration > 0) {
   } else if (!isFinished && finished.value) {
     // Song was finished but now we're not at the end (user seeked back)
     finished.value = false;
+
+
+     if (endScene) {
+        endScene.hide();
+      }
+
   }
 }
 
@@ -1538,6 +1526,12 @@ function startAnimation() {
     // We're at the end, reset to beginning
     AudioController.reset();
     if (finished) finished.value = false;
+
+
+      if (endScene) {
+      endScene.hide();
+    }
+
   }
   
   AudioController.startAudio();
