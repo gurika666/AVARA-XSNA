@@ -202,6 +202,18 @@ let scrub;
 let isScrubbing = false;
 let isSeekingAudio = false;
 let lyricText, spot;
+let focus1, focus2, focus3;
+let vhs1collected, vhs2collected, vhs3collected;
+let focus1Triggered, focus2Triggered,focus3Triggered;
+let vhscount;
+let finished;
+
+let preFocusPosition = null;  // Store camera position before zoom
+let isHoverFocused = false;  // Track hover state
+let hoverZoomAmount = 0;  // Current zoom distance
+let zoomDirection = new THREE.Vector3();  // Direction to zoom toward
+
+let hoverInput;
 
 let starNestMaterials = new Map();
 
@@ -315,6 +327,16 @@ const textAppearTimes = [
  
 ];
 
+const focusTimes = {
+  focus1Time: 2,  // Set focus1 to true at 10 seconds
+  focus2Time: 20,  // Set focus2 to true at 20 seconds
+  focus3Time: 30   // Set focus3 to true at 30 seconds
+};
+const FOCUS_TIMEOUT_DURATION = 10;  // Seconds before focus auto-disables (easy to change)
+let focus1Timer = null;
+let focus2Timer = null;
+let focus3Timer = null;
+
 // Resources to be loaded
 const resources = {
   hdri: null,
@@ -324,6 +346,41 @@ const resources = {
   audio: null,
   vegetation: null
 };
+let deathObject = null;
+let loversObject = null;
+let magicianObject = null;
+
+async function loadVHSObjects() {
+  return new Promise((resolve, reject) => {
+    new GLTFLoader().load(
+      'mesh/vhs.glb',
+      (gltf) => {
+        // Find the three objects in the loaded model
+        gltf.scene.traverse((child) => {
+          if (child.name === 'death') {
+            deathObject = child;
+          } else if (child.name === 'lovers') {
+            loversObject = child;
+          } else if (child.name === 'magician') {
+            magicianObject = child;
+          }
+        });
+
+
+        
+
+        resolve();
+      },
+      undefined,
+      (error) => {
+        console.error('Failed to load VHS model:', error);
+        reject(error);
+      }
+    );
+  });
+
+}
+
 
 async function init() {
   loadRiveOverlay();
@@ -681,10 +738,17 @@ async function loadRiveOverlay() {
       songprogressadd = viewmodel.number('progressnum');
       scrub = viewmodel.boolean('scrub');
       lyricText = viewmodel.string('lyrics');
+      focus1 = viewmodel.boolean('focus1');
+      focus2 = viewmodel.boolean('focus2');
+      focus3 = viewmodel.boolean('focus3');
+      hoverInput = viewmodel.boolean('hoverfocus');
+      vhscount = viewmodel.number('vhscount');
     
       
       stoppedInput = inputs.find(i => i.name === 'stopped');
       loadedInput = inputs.find(i => i.name === 'Loaded');
+      finished = inputs.find(i => i.name === 'finished');
+      
 
 
 
@@ -722,8 +786,44 @@ async function loadRiveOverlay() {
       });
 
      
-  
-        
+ rive.on(EventType.RiveEvent || 'vhs1event', (event) => {
+  if (event && event.data && event.data.name === 'vhs1') {
+    if (focus1) focus1.value = false;
+    if (focus2) focus2.value = false;
+    if (focus3) focus3.value = false;
+    if (hoverInput) hoverInput.value = false;
+   clearFocusTimers();
+    vhs1collected = true;
+    vhscount.value += 1;
+    console.log('VHS1 collected, focus and hover booleans set to false');
+  }
+});
+
+rive.on(EventType.RiveEvent || 'vhs2event', (event) => {
+  if (event && event.data && event.data.name === 'vhs2') {
+    if (focus1) focus1.value = false;
+    if (focus2) focus2.value = false;
+    if (focus3) focus3.value = false;
+    if (hoverInput) hoverInput.value = false;
+  clearFocusTimers();
+    vhs2collected = true;
+    vhscount.value += 1;
+    console.log('VHS2 collected, focus and hover booleans set to false');
+  }
+});
+
+rive.on(EventType.RiveEvent || 'vhs3event', (event) => {
+  if (event && event.data && event.data.name === 'vhs3') {
+    if (focus1) focus1.value = false;
+    if (focus2) focus2.value = false;
+    if (focus3) focus3.value = false;
+    if (hoverInput) hoverInput.value = false;
+  clearFocusTimers();
+    vhs3collected = true;
+    vhscount.value += 1;
+    console.log('VHS3 collected, focus and hover booleans set to false');
+  }
+});
       
 
       if (width) {
@@ -744,6 +844,101 @@ async function loadRiveOverlay() {
 
 
 }
+
+
+
+function updateFocusBooleans(audioTime) {
+  // Check and trigger focus1
+  if (!focus1Triggered && !vhs1collected && audioTime >= focusTimes.focus1Time) {
+    if (focus1) {
+      // Disable other focuses before enabling this one
+      if (focus2) focus2.value = false;
+      if (focus3) focus3.value = false;
+      clearFocusTimers();  // Clear all timers
+      
+      focus1.value = true;
+      startFocusTimer(1);
+    }
+    focus1Triggered = true;
+  }
+  
+  // Check and trigger focus2
+  if (!focus2Triggered && !vhs2collected && audioTime >= focusTimes.focus2Time) {
+    if (focus2) {
+      // Disable other focuses before enabling this one
+      if (focus1) focus1.value = false;
+      if (focus3) focus3.value = false;
+      clearFocusTimers();  // Clear all timers
+      
+      focus2.value = true;
+      startFocusTimer(2);
+    }
+    focus2Triggered = true;
+  }
+  
+  // Check and trigger focus3
+  if (!focus3Triggered && !vhs3collected && audioTime >= focusTimes.focus3Time) {
+    if (focus3) {
+      // Disable other focuses before enabling this one
+      if (focus1) focus1.value = false;
+      if (focus2) focus2.value = false;
+      clearFocusTimers();  // Clear all timers
+      
+      focus3.value = true;
+      startFocusTimer(3);
+    }
+    focus3Triggered = true;
+  }
+}
+
+function clearFocusTimers() {
+  if (focus1Timer) {
+    clearTimeout(focus1Timer);
+    focus1Timer = null;
+  }
+  if (focus2Timer) {
+    clearTimeout(focus2Timer);
+    focus2Timer = null;
+  }
+  if (focus3Timer) {
+    clearTimeout(focus3Timer);
+    focus3Timer = null;
+  }
+}
+
+function startFocusTimer(focusNumber) {
+  // Clear any existing timer for this focus
+  if (focusNumber === 1 && focus1Timer) {
+    clearTimeout(focus1Timer);
+  } else if (focusNumber === 2 && focus2Timer) {
+    clearTimeout(focus2Timer);
+  } else if (focusNumber === 3 && focus3Timer) {
+    clearTimeout(focus3Timer);
+  }
+  
+  // Start new timer
+  const timer = setTimeout(() => {
+    if (focusNumber === 1 && focus1) {
+      focus1.value = false;
+      if (hoverInput) hoverInput.value = false;  // Also disable hover
+      console.log('Focus1 auto-timeout after', FOCUS_TIMEOUT_DURATION, 'seconds');
+    } else if (focusNumber === 2 && focus2) {
+      focus2.value = false;
+      if (hoverInput) hoverInput.value = false;  // Also disable hover
+      console.log('Focus2 auto-timeout after', FOCUS_TIMEOUT_DURATION, 'seconds');
+    } else if (focusNumber === 3 && focus3) {
+      focus3.value = false;
+      if (hoverInput) hoverInput.value = false;  // Also disable hover
+      console.log('Focus3 auto-timeout after', FOCUS_TIMEOUT_DURATION, 'seconds');
+    }
+  }, FOCUS_TIMEOUT_DURATION * 1000);  // Convert seconds to milliseconds
+  
+  // Store timer reference
+  if (focusNumber === 1) focus1Timer = timer;
+  else if (focusNumber === 2) focus2Timer = timer;
+  else if (focusNumber === 3) focus3Timer = timer;
+}
+
 
 function updateLyricText(audioTime) {
   if (!lyricText) return;
@@ -784,7 +979,16 @@ async function completeSetup() {
   camera.position.set(0, 2, 0);
   camera.layers.enable(LAYERS.DOFIGNORE);
 
+  if (!camera.parent) {
+    scene.add(camera);
+  }
+  
+
   if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
+
+
+  await loadVHSObjects();
+
 
   setupPostProcessing();
   setupLights();
@@ -842,7 +1046,6 @@ function setupHeadTracking() {
     console.warn('Head bone not found');
   }
 }
-
 
 
 function updateSwirlAnimation(audioTime) {
@@ -1250,7 +1453,73 @@ function animate(time) {
       songprogressadd.value = progress;
     }
   }
+
+
+// Handle hover cursor zoom
+if (hoverInput && hoverInput.value) {
+  // Store the position when first starting hover
+  if (!isHoverFocused) {
+    preFocusPosition = camera.position.clone();
+    isHoverFocused = true;
+    hoverZoomAmount = 0;
+    
+    // Calculate zoom direction from camera toward cursor position in 3D space
+    mouseNDC.set(
+      (mouseX / window.innerWidth) * 2,
+      -(mouseY / window.innerHeight) * 2
+    );
+    raycaster.setFromCamera(mouseNDC, camera);
+    
+    // Get a point along the ray as zoom target
+    raycaster.ray.at(50, zoomDirection);
+    zoomDirection.sub(camera.position).normalize();
+  }
+  
+  // Continuously zoom toward cursor position
+  hoverZoomAmount += 0.5;  // Adjust this value to control zoom speed
+  
+  // Move camera along the zoom direction
+  camera.position.copy(preFocusPosition);
+  camera.position.addScaledVector(zoomDirection, hoverZoomAmount);
+  
+  // Optional: Limit maximum zoom distance
+  // if (hoverZoomAmount > 20) hoverZoomAmount = 20;
+  
+} else if (isHoverFocused) {
+  // Snap back to stored position when hover ends
+  camera.position.copy(preFocusPosition);
+  isHoverFocused = false;
+  hoverZoomAmount = 0;
+  preFocusPosition = null;
+}
+
+if (finished && audioDuration > 0) {
+  const isFinished = audioTime >= audioDuration - 0.1;
+  
+  if (isFinished && !finished.value) {
+    // Song just finished
+    finished.value = true;
+    isAnimating = false;  // Stop the animation loop
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+    // Don't call pauseAnimation() - just stop the loop
+    return;
+  } else if (!isFinished && finished.value) {
+    // Song was finished but now we're not at the end (user seeked back)
+    finished.value = false;
+  }
+}
+
+// If finished is true, don't continue animating
+if (finished && finished.value) {
+  return;
+}
+
   updateLyricText(audioTime);
+
+  updateFocusBooleans(audioTime);
 
   // Render
   if (scene && camera) composer.render();
@@ -1259,6 +1528,16 @@ function animate(time) {
 function startAnimation() {
   if (isAnimating) {
     return;
+  }
+  
+  // Check if we're at the end
+  const audioTime = AudioController.getCurrentTime();
+  const audioDuration = AudioController.getAudioDuration();
+  
+  if (audioDuration > 0 && audioTime >= audioDuration - 0.1) {
+    // We're at the end, reset to beginning
+    AudioController.reset();
+    if (finished) finished.value = false;
   }
   
   AudioController.startAudio();
@@ -1287,6 +1566,8 @@ function pauseAnimation() {
   if (stoppedInput) {
     stoppedInput.value = true;
   }
+  
+  // Don't reset finished state here - keep it true if song ended
 }
 
 // Initialize after delay
