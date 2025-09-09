@@ -1,4 +1,4 @@
-// app.js - Optimized main application with state machine
+// app.js - Optimized main application with improved version/VHS system
 import * as THREE from "three";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -30,10 +30,179 @@ import { DepthDrivenBlurPass } from './custom-dof.js';
 
 import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-app/webgl2';
 
+// ============================================
+// VERSION & VHS COLLECTION SYSTEM
+// ============================================
 
-let version1 = true;  // Default scene
-let version2 = false;
-let version3 = false;
+class VersionManager {
+  constructor() {
+    this.currentVersion = 1; // Always start with version 1
+    
+    // Track VHS collection state globally (persists across version changes)
+    this.vhsCollected = {
+      vhs1: false,
+      vhs2: false,
+      vhs3: false
+    };
+    
+    // Version-specific settings (if needed for different scenes)
+    this.versionSettings = {
+      1: { name: 'Death', audioPath: 'audio/xsna.mp3' },
+      2: { name: 'Lovers', audioPath: 'audio/xsna.mp3' }, // Change if different audio
+      3: { name: 'Magician', audioPath: 'audio/xsna.mp3' } // Change if different audio
+    };
+  }
+  
+  setVersion(versionNumber) {
+    if (versionNumber < 1 || versionNumber > 3) return false;
+    this.currentVersion = versionNumber;
+    console.log(`Version set to: ${versionNumber} (${this.versionSettings[versionNumber].name})`);
+    return true;
+  }
+  
+  getCurrentVersion() {
+    return this.currentVersion;
+  }
+  
+  collectVHS(vhsNumber) {
+    const vhsKey = `vhs${vhsNumber}`;
+    if (this.vhsCollected.hasOwnProperty(vhsKey)) {
+      this.vhsCollected[vhsKey] = true;
+      console.log(`${vhsKey} collected!`);
+      return true;
+    }
+    return false;
+  }
+  
+  isVHSCollected(vhsNumber) {
+    return this.vhsCollected[`vhs${vhsNumber}`] || false;
+  }
+  
+  getCollectionStates() {
+    return { ...this.vhsCollected };
+  }
+  
+  getCollectedCount() {
+    return Object.values(this.vhsCollected).filter(v => v).length;
+  }
+  
+  shouldTriggerFocus(vhsNumber) {
+    return !this.isVHSCollected(vhsNumber);
+  }
+  
+  resetAll() {
+    this.currentVersion = 1;
+    this.vhsCollected = {
+      vhs1: false,
+      vhs2: false,
+      vhs3: false
+    };
+  }
+}
+
+class FocusManager {
+  constructor(versionManager) {
+    this.versionManager = versionManager;
+    this.focusTriggered = {}; // Track if focus was triggered this playthrough
+    this.focusTimers = {};
+    this.FOCUS_TIMEOUT = 10; // seconds
+    
+    this.focusTimes = {
+      1: 2,   // Focus 1 triggers at 2 seconds
+      2: 20,  // Focus 2 triggers at 20 seconds
+      3: 30   // Focus 3 triggers at 30 seconds
+    };
+  }
+  
+  resetTriggers() {
+    this.focusTriggered = {
+      1: false,
+      2: false,
+      3: false
+    };
+    this.clearAllTimers();
+  }
+  
+  updateFocus(audioTime, focusInputs, hoverInput) {
+    for (let i = 1; i <= 3; i++) {
+      // Skip if VHS is already collected or focus already triggered
+      if (this.versionManager.isVHSCollected(i) || this.focusTriggered[i]) {
+        continue;
+      }
+      
+      // Check if it's time to trigger this focus
+      if (audioTime >= this.focusTimes[i]) {
+        this.triggerFocus(i, focusInputs, hoverInput);
+        this.focusTriggered[i] = true;
+      }
+    }
+  }
+  
+  triggerFocus(focusNumber, focusInputs, hoverInput) {
+    console.log(`Triggering focus ${focusNumber}`);
+    
+    // Disable all other focuses
+    for (let i = 1; i <= 3; i++) {
+      if (focusInputs[i]) {
+        focusInputs[i].value = false;
+      }
+    }
+    
+    // Clear existing timers
+    this.clearAllTimers();
+    
+    // Enable this focus
+    if (focusInputs[focusNumber]) {
+      focusInputs[focusNumber].value = true;
+      
+      // Start timeout timer
+      this.focusTimers[focusNumber] = setTimeout(() => {
+        if (focusInputs[focusNumber]) {
+          focusInputs[focusNumber].value = false;
+        }
+        if (hoverInput) {
+          hoverInput.value = false;
+        }
+        console.log(`Focus ${focusNumber} timed out after ${this.FOCUS_TIMEOUT} seconds`);
+      }, this.FOCUS_TIMEOUT * 1000);
+    }
+  }
+  
+  collectVHS(vhsNumber, focusInputs, hoverInput, vhsCountInput) {
+    // Clear all focuses
+    for (let i = 1; i <= 3; i++) {
+      if (focusInputs[i]) {
+        focusInputs[i].value = false;
+      }
+    }
+    
+    if (hoverInput) {
+      hoverInput.value = false;
+    }
+    
+    // Clear timers
+    this.clearAllTimers();
+    
+    // Mark as collected in version manager
+    this.versionManager.collectVHS(vhsNumber);
+    
+    // Update count
+    if (vhsCountInput) {
+      vhsCountInput.value = this.versionManager.getCollectedCount();
+    }
+    
+    console.log(`VHS ${vhsNumber} collected! Total: ${this.versionManager.getCollectedCount()}/3`);
+  }
+  
+  clearAllTimers() {
+    Object.values(this.focusTimers).forEach(timer => clearTimeout(timer));
+    this.focusTimers = {};
+  }
+}
+
+// Initialize version and focus managers
+const versionManager = new VersionManager();
+const focusManager = new FocusManager(versionManager);
 
 // State Machine Class
 class AnimationStateMachine {
@@ -194,9 +363,7 @@ window.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini
 // Initialize state machine
 const stateMachine = new AnimationStateMachine();
 
-
 let endScene = null;
-
 let depthBlurPass;
 let riveOverlay;
 let rive;
@@ -212,8 +379,6 @@ let isScrubbing = false;
 let isSeekingAudio = false;
 let lyricText, spot;
 let focus1, focus2, focus3;
-let vhs1collected, vhs2collected, vhs3collected;
-let focus1Triggered, focus2Triggered,focus3Triggered;
 let vhscount;
 let finished;
 
@@ -288,7 +453,6 @@ const config = {
     rotation: new THREE.Euler(0, 0, 0),
     autoplay: true
   }
-
 };
 
 // Animation timing
@@ -324,27 +488,13 @@ const animEndTime2 = 110;
 let fogStartColor = new THREE.Color(config.fog.start.color);
 let fogEndColor = new THREE.Color(config.fog.end.color);
 
-// Note: Swirl animation timing is now controlled by the state machine
-// It starts 25 seconds after entering FINAL state (at t=110) and runs for 10 seconds
-
 const textAppearTimes = [
   { time: 26.593, text: "Tvalebs Adevs Nami" },
   { time: 29.777, text: "Zgvaa Dzaan Wynari" },
   { time: 32.890, text: "Caze Fantavs Elvebs" },
   { time: 35, text: "Dauokebeli Brazi" },
   { time: 37.8, text: "Axals Arafers Ar Getyvi" },
- 
 ];
-
-const focusTimes = {
-  focus1Time: 2,  // Set focus1 to true at 10 seconds
-  focus2Time: 20,  // Set focus2 to true at 20 seconds
-  focus3Time: 30   // Set focus3 to true at 30 seconds
-};
-const FOCUS_TIMEOUT_DURATION = 10;  // Seconds before focus auto-disables (easy to change)
-let focus1Timer = null;
-let focus2Timer = null;
-let focus3Timer = null;
 
 // Resources to be loaded
 const resources = {
@@ -356,8 +506,6 @@ const resources = {
   vegetation: null
 };
 
-
-
 async function init() {
   loadRiveOverlay();
 
@@ -365,7 +513,6 @@ async function init() {
   renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvas });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
-  // renderer.outputEncoding = THREE.sRGBEncoding;
 
   const pixelRatio = window.isMobile ? 0.7 : 1;
   renderer.setPixelRatio(0.6);
@@ -377,9 +524,7 @@ async function init() {
   scene.fog = new THREE.Fog(config.fog.start.color, config.fog.start.near, config.fog.start.far);
   
   // Initialize controllers
-  AudioController.init({ 
-  
-  });
+  AudioController.init({});
   
   // Setup event listeners
   setupEventListeners();
@@ -511,7 +656,6 @@ async function loadAllResources() {
   try {
     await Promise.all([
       loadHDRTexture('images/txt.hdr', 'txthdr', manager),
-      
     ]);
     updateProgress();
   } catch (error) {
@@ -522,7 +666,6 @@ async function loadAllResources() {
   const remainingTasks = [
     loadFont('fonts/Monarch_Regular.json', manager),
     loadGLB(config.glb.path, manager),
- 
     initVegetation(manager)
   ];
   
@@ -697,7 +840,6 @@ async function loadRiveOverlay() {
     canvas: rivecanvas,
     autoplay: true,
     autoBind: true,
-    // artboard: 'Artboard',
     stateMachines: 'State Machine 1',
     layout: new Layout({
       fit: Fit.Layout,
@@ -718,88 +860,67 @@ async function loadRiveOverlay() {
       focus3 = viewmodel.boolean('focus3');
       hoverInput = viewmodel.boolean('hoverfocus');
       vhscount = viewmodel.number('vhscount');
-    
       
       stoppedInput = inputs.find(i => i.name === 'stopped');
       loadedInput = inputs.find(i => i.name === 'Loaded');
       finished = inputs.find(i => i.name === 'finished');
-      
 
-
-
-
-    rive.on(EventType.RiveEvent || 'spotifyevent', (event) => {
+      // Spotify event
+      rive.on(EventType.RiveEvent || 'spotifyevent', (event) => {
         if (event.data.name === 'spotify') {
-          // document.body.classList.add('spotify');
-
           console.log('Spotify event received');
-
-        window.location.assign('https://open.spotify.com/artist/5UZEQzbK7ktedLBHvZ2wkJ?si=heZI_ZZFRO6ms4xBZURn7A', '_blank');
+          window.location.assign('https://open.spotify.com/artist/5UZEQzbK7ktedLBHvZ2wkJ?si=heZI_ZZFRO6ms4xBZURn7A', '_blank');
         }
       });
 
-
+      // Instagram event
       rive.on(EventType.RiveEvent || 'instaevent', (event) => {
         if (event.data.name === 'instagram') {
-          // document.body.classList.add('instagram');
-
           console.log('Instagram event received');
-         window.location.assign('https://www.instagram.com/avara.band?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==', '_top');
-        
+          window.location.assign('https://www.instagram.com/avara.band?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==', '_top');
         }
       });
 
-
+      // Play/pause event
       rive.on(EventType.RiveEvent || 'riveevent', (event) => {
         if (event && event.data && event.data.name === 'click') {
           document.body.classList.add('clicked');
           if (isSetupComplete) {
             togglePlayPause();
           }
-         
         }
       });
 
-     
- rive.on(EventType.RiveEvent || 'vhs1event', (event) => {
-  if (event && event.data && event.data.name === 'vhs1') {
-    if (focus1) focus1.value = false;
-    if (focus2) focus2.value = false;
-    if (focus3) focus3.value = false;
-    if (hoverInput) hoverInput.value = false;
-   clearFocusTimers();
-    vhs1collected = true;
-    vhscount.value += 1;
-    console.log('VHS1 collected, focus and hover booleans set to false');
-  }
-});
+      // VHS collection events using new focus manager
+      rive.on(EventType.RiveEvent || 'vhs1event', (event) => {
+        if (event?.data?.name === 'vhs1') {
+          focusManager.collectVHS(1, 
+            { 1: focus1, 2: focus2, 3: focus3 }, 
+            hoverInput, 
+            vhscount
+          );
+        }
+      });
 
-rive.on(EventType.RiveEvent || 'vhs2event', (event) => {
-  if (event && event.data && event.data.name === 'vhs2') {
-    if (focus1) focus1.value = false;
-    if (focus2) focus2.value = false;
-    if (focus3) focus3.value = false;
-    if (hoverInput) hoverInput.value = false;
-  clearFocusTimers();
-    vhs2collected = true;
-    vhscount.value += 1;
-    console.log('VHS2 collected, focus and hover booleans set to false');
-  }
-});
+      rive.on(EventType.RiveEvent || 'vhs2event', (event) => {
+        if (event?.data?.name === 'vhs2') {
+          focusManager.collectVHS(2, 
+            { 1: focus1, 2: focus2, 3: focus3 }, 
+            hoverInput, 
+            vhscount
+          );
+        }
+      });
 
-rive.on(EventType.RiveEvent || 'vhs3event', (event) => {
-  if (event && event.data && event.data.name === 'vhs3') {
-    if (focus1) focus1.value = false;
-    if (focus2) focus2.value = false;
-    if (focus3) focus3.value = false;
-    if (hoverInput) hoverInput.value = false;
-  clearFocusTimers();
-    vhs3collected = true;
-    vhscount.value += 1;
-    console.log('VHS3 collected, focus and hover booleans set to false');
-  }
-});
-      
+      rive.on(EventType.RiveEvent || 'vhs3event', (event) => {
+        if (event?.data?.name === 'vhs3') {
+          focusManager.collectVHS(3, 
+            { 1: focus1, 2: focus2, 3: focus3 }, 
+            hoverInput, 
+            vhscount
+          );
+        }
+      });
 
       if (width) {
         width.value = window.innerWidth; 
@@ -816,109 +937,21 @@ rive.on(EventType.RiveEvent || 'vhs3event', (event) => {
       }
     }
   });
-
-
 }
 
 function updateFocusBooleans(audioTime) {
-  // Check and trigger focus1
-  if (!focus1Triggered && !vhs1collected && audioTime >= focusTimes.focus1Time) {
-    if (focus1) {
-      // Disable other focuses before enabling this one
-      if (focus2) focus2.value = false;
-      if (focus3) focus3.value = false;
-      clearFocusTimers();  // Clear all timers
-      
-      focus1.value = true;
-      startFocusTimer(1);
-    }
-    focus1Triggered = true;
-  }
-  
-  // Check and trigger focus2
-  if (!focus2Triggered && !vhs2collected && audioTime >= focusTimes.focus2Time) {
-    if (focus2) {
-      // Disable other focuses before enabling this one
-      if (focus1) focus1.value = false;
-      if (focus3) focus3.value = false;
-      clearFocusTimers();  // Clear all timers
-      
-      focus2.value = true;
-      startFocusTimer(2);
-    }
-    focus2Triggered = true;
-  }
-  
-  // Check and trigger focus3
-  if (!focus3Triggered && !vhs3collected && audioTime >= focusTimes.focus3Time) {
-    if (focus3) {
-      // Disable other focuses before enabling this one
-      if (focus1) focus1.value = false;
-      if (focus2) focus2.value = false;
-      clearFocusTimers();  // Clear all timers
-      
-      focus3.value = true;
-      startFocusTimer(3);
-    }
-    focus3Triggered = true;
-  }
-}
-
-function clearFocusTimers() {
-  if (focus1Timer) {
-    clearTimeout(focus1Timer);
-    focus1Timer = null;
-  }
-  if (focus2Timer) {
-    clearTimeout(focus2Timer);
-    focus2Timer = null;
-  }
-  if (focus3Timer) {
-    clearTimeout(focus3Timer);
-    focus3Timer = null;
-  }
-}
-
-function startFocusTimer(focusNumber) {
-  // Clear any existing timer for this focus
-  if (focusNumber === 1 && focus1Timer) {
-    clearTimeout(focus1Timer);
-  } else if (focusNumber === 2 && focus2Timer) {
-    clearTimeout(focus2Timer);
-  } else if (focusNumber === 3 && focus3Timer) {
-    clearTimeout(focus3Timer);
-  }
-  
-  // Start new timer
-  const timer = setTimeout(() => {
-    if (focusNumber === 1 && focus1) {
-      focus1.value = false;
-      if (hoverInput) hoverInput.value = false;  // Also disable hover
-      console.log('Focus1 auto-timeout after', FOCUS_TIMEOUT_DURATION, 'seconds');
-    } else if (focusNumber === 2 && focus2) {
-      focus2.value = false;
-      if (hoverInput) hoverInput.value = false;  // Also disable hover
-      console.log('Focus2 auto-timeout after', FOCUS_TIMEOUT_DURATION, 'seconds');
-    } else if (focusNumber === 3 && focus3) {
-      focus3.value = false;
-      if (hoverInput) hoverInput.value = false;  // Also disable hover
-      console.log('Focus3 auto-timeout after', FOCUS_TIMEOUT_DURATION, 'seconds');
-    }
-  }, FOCUS_TIMEOUT_DURATION * 1000);  // Convert seconds to milliseconds
-  
-  // Store timer reference
-  if (focusNumber === 1) focus1Timer = timer;
-  else if (focusNumber === 2) focus2Timer = timer;
-  else if (focusNumber === 3) focus3Timer = timer;
+  focusManager.updateFocus(
+    audioTime,
+    { 1: focus1, 2: focus2, 3: focus3 },
+    hoverInput
+  );
 }
 
 function updateLyricText(audioTime) {
   if (!lyricText) return;
   
-  // Find the current text that should be displayed
   let currentText = "";
   
-  // Go through the times in reverse to find the most recent text
   for (let i = textAppearTimes.length - 1; i >= 0; i--) {
     if (audioTime >= textAppearTimes[i].time) {
       currentText = textAppearTimes[i].text;
@@ -926,28 +959,27 @@ function updateLyricText(audioTime) {
     }
   }
   
-  // Update the Rive text variable
- lyricText.value = currentText;
+  lyricText.value = currentText;
 }
 
 function handleVersionChange(versionNumber) {
-  // Set version booleans based on selected object
-  version1 = (versionNumber === 1);
-  version2 = (versionNumber === 2);
-  version3 = (versionNumber === 3);
+  // Set the new version
+  versionManager.setVersion(versionNumber);
   
-  console.log(`Version changed to: version${versionNumber} - version1: ${version1}, version2: ${version2}, version3: ${version3}`);
+  // Reset focus triggers for new playthrough
+  focusManager.resetTriggers();
   
-  // Reset audio and restart scene
+  // Reset audio and UI
   AudioController.reset();
   if (finished) finished.value = false;
   
-  // Hide end scene and restart animation
+  // Hide end scene
   if (endScene) {
     endScene.hide();
   }
   
   // Start animation from beginning
+  console.log(`Starting version ${versionNumber} with collected VHS: ${JSON.stringify(versionManager.getCollectionStates())}`);
   startAnimation();
 }
 
@@ -968,7 +1000,7 @@ async function completeSetup() {
   
   await new Promise(resolve => setTimeout(resolve, 1000));
 
-  console.log('Starting with version1 (default scene)');
+  console.log('Starting with version 1 (default scene)');
 
   camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 2, 0);
@@ -977,13 +1009,8 @@ async function completeSetup() {
   if (!camera.parent) {
     scene.add(camera);
   }
-  
 
   if (AudioController.getAudioListener) camera.add(AudioController.getAudioListener());
-
-
-
-
 
   setupPostProcessing();
   setupLights();
@@ -1007,33 +1034,20 @@ async function completeSetup() {
   if (cursorPlane.plane) {
     cursorPlane.plane.layers.set(LAYERS.DOFIGNORE);
   }
-  
- 
-  
 
-
-
-  
   VegetationManager.createInitialVegetationWhenReady(scene);
   
   isSetupComplete = true;
 
-
-   endScene = new EndScene(
+  // Initialize end scene with version manager
+  endScene = new EndScene(
     resources.txthdr, 
-    (versionNumber) => {
-      // Handle version change callback
-      handleVersionChange(versionNumber);
-    },
-    {
-      vhs1: vhs1collected || true,
-      vhs2: vhs2collected || false,
-      vhs3: vhs3collected || false
-    }
+    handleVersionChange,
+    versionManager
   );
 
   await endScene.init();
-  endScene.hide();
+  endScene.show();
 
   if (loadedInput) {
     loadedInput.value = true;
@@ -1058,7 +1072,6 @@ function setupHeadTracking() {
     console.warn('Head bone not found');
   }
 }
-
 
 function updateSwirlAnimation(audioTime) {
   if (!starNestMaterials || starNestMaterials.size === 0) return;
@@ -1339,7 +1352,6 @@ function animate(time) {
   
   // Always running updates
   gltfMixer?.update(deltaTime);
- 
 
   handleAnimationTransitions(audioTime, deltaTime);
   updateHeadLookAtOptimized(camera, deltaTime);
@@ -1368,7 +1380,7 @@ function animate(time) {
     updateSwirlAnimation(audioTime);
   }
   
-  // 4. Camera animations
+  // 5. Camera animations
   if (stateMachine.isFirstCameraAnimActive()) {
     const progress = Math.max(0, Math.min(1, (audioTime - animStartTime) / (animEndTime - animStartTime)));
     const easedProgress = progress * progress * (3 - 2 * progress);
@@ -1466,84 +1478,75 @@ function animate(time) {
     }
   }
 
-
-// Handle hover cursor zoom
-if (hoverInput && hoverInput.value) {
-  // Store the position when first starting hover
-  if (!isHoverFocused) {
-    preFocusPosition = camera.position.clone();
-    isHoverFocused = true;
+  // Handle hover cursor zoom
+  if (hoverInput && hoverInput.value) {
+    // Store the position when first starting hover
+    if (!isHoverFocused) {
+      preFocusPosition = camera.position.clone();
+      isHoverFocused = true;
+      hoverZoomAmount = 0;
+      
+      // Calculate zoom direction from camera toward cursor position in 3D space
+      mouseNDC.set(
+        (mouseX / window.innerWidth) * 2,
+        -(mouseY / window.innerHeight) * 2
+      );
+      raycaster.setFromCamera(mouseNDC, camera);
+      
+      // Get a point along the ray as zoom target
+      raycaster.ray.at(50, zoomDirection);
+      zoomDirection.sub(camera.position).normalize();
+    }
+    
+    // Continuously zoom toward cursor position
+    hoverZoomAmount += 0.5;  // Adjust this value to control zoom speed
+    
+    // Move camera along the zoom direction
+    camera.position.copy(preFocusPosition);
+    camera.position.addScaledVector(zoomDirection, hoverZoomAmount);
+    
+  } else if (isHoverFocused) {
+    // Snap back to stored position when hover ends
+    camera.position.copy(preFocusPosition);
+    isHoverFocused = false;
     hoverZoomAmount = 0;
-    
-    // Calculate zoom direction from camera toward cursor position in 3D space
-    mouseNDC.set(
-      (mouseX / window.innerWidth) * 2,
-      -(mouseY / window.innerHeight) * 2
-    );
-    raycaster.setFromCamera(mouseNDC, camera);
-    
-    // Get a point along the ray as zoom target
-    raycaster.ray.at(50, zoomDirection);
-    zoomDirection.sub(camera.position).normalize();
+    preFocusPosition = null;
   }
-  
-  // Continuously zoom toward cursor position
-  hoverZoomAmount += 0.5;  // Adjust this value to control zoom speed
-  
-  // Move camera along the zoom direction
-  camera.position.copy(preFocusPosition);
-  camera.position.addScaledVector(zoomDirection, hoverZoomAmount);
-  
-  // Optional: Limit maximum zoom distance
-  // if (hoverZoomAmount > 20) hoverZoomAmount = 20;
-  
-} else if (isHoverFocused) {
-  // Snap back to stored position when hover ends
-  camera.position.copy(preFocusPosition);
-  isHoverFocused = false;
-  hoverZoomAmount = 0;
-  preFocusPosition = null;
-}
 
-if (finished && audioDuration > 0) {
-  const isFinished = audioTime >= audioDuration - 0.1;
-  
-  if (isFinished && !finished.value) {
-    // Song just finished
-    finished.value = true;
-    isAnimating = false;  // Stop the animation loop
-
+  if (finished && audioDuration > 0) {
+    const isFinished = audioTime >= audioDuration - 0.1;
+    
+    if (isFinished && !finished.value) {
+      // Song just finished
+      finished.value = true;
+      isAnimating = false;  // Stop the animation loop
 
       if (endScene) {
         endScene.show();
       }
 
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+      }
+      // Don't call pauseAnimation() - just stop the loop
+      return;
+    } else if (!isFinished && finished.value) {
+      // Song was finished but now we're not at the end (user seeked back)
+      finished.value = false;
 
-    if (animationId) {
-      cancelAnimationFrame(animationId);
-      animationId = null;
-    }
-    // Don't call pauseAnimation() - just stop the loop
-    return;
-  } else if (!isFinished && finished.value) {
-    // Song was finished but now we're not at the end (user seeked back)
-    finished.value = false;
-
-
-     if (endScene) {
+      if (endScene) {
         endScene.hide();
       }
-
+    }
   }
-}
 
-// If finished is true, don't continue animating
-if (finished && finished.value) {
-  return;
-}
+  // If finished is true, don't continue animating
+  if (finished && finished.value) {
+    return;
+  }
 
   updateLyricText(audioTime);
-
   updateFocusBooleans(audioTime);
 
   // Render
@@ -1555,6 +1558,9 @@ function startAnimation() {
     return;
   }
   
+  // Reset focus triggers for this playthrough
+  focusManager.resetTriggers();
+  
   // Check if we're at the end
   const audioTime = AudioController.getCurrentTime();
   const audioDuration = AudioController.getAudioDuration();
@@ -1564,11 +1570,9 @@ function startAnimation() {
     AudioController.reset();
     if (finished) finished.value = false;
 
-
-      if (endScene) {
+    if (endScene) {
       endScene.hide();
     }
-
   }
   
   AudioController.startAudio();

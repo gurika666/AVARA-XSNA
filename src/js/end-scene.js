@@ -1,23 +1,21 @@
-// end-scene.js - A separate Three.js scene that appears at the end
+// end-scene.js - A separate Three.js scene with improved VHS collection logic
 import * as THREE from "three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 class EndScene {
-constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) {  // ADD: Accept collected states
+  constructor(hdriTexture = null, onVersionSelect = null, versionManager = null) {
     this.scene = null;
     this.camera = null;
     this.renderer = null;
     this.canvas = null;
     this.isActive = false;
     this.animationId = null;
-    this.hdriTexture = hdriTexture;  // ADD: Store the HDRI texture
+    this.hdriTexture = hdriTexture;
     this.onVersionSelect = onVersionSelect;
-    this.collectedStates = collectedStates || { vhs1: false, vhs2: false, vhs3: false };  // ADD: Store collected states
+    this.versionManager = versionManager; // Use version manager for collection states
     
     // VHS objects
-    this.deathObject = null;
-    this.loversObject = null;
-    this.magicianObject = null;
+    this.vhsObjects = {}; // Store by number: 1, 2, 3
     this.vhsGroup = null;
     
     // Hover tracking
@@ -57,11 +55,9 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
     // Setup scene
     this.scene = new THREE.Scene();
     
-    // ADD: Apply HDRI to scene environment for global reflections
+    // Apply HDRI to scene environment for global reflections
     if (this.hdriTexture) {
       this.scene.environment = this.hdriTexture;
-      // Optional: use as background too
-      // this.scene.background = this.hdriTexture;
     }
 
     // Setup camera
@@ -82,10 +78,14 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
     await this.loadVHSObjects();
 
     // Add lights
-    const ambientLight = new THREE.AmbientLight(0x111111, 0);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
     this.scene.add(ambientLight);
 
-  // Add mouse move listener
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(5, 10, 7.5);
+    this.scene.add(light);
+
+    // Add mouse move listener
     window.addEventListener('mousemove', (event) => this.onMouseMove(event));
     
     // Add click listener
@@ -100,51 +100,37 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
       new GLTFLoader().load(
         'mesh/vhs.glb',
         (gltf) => {
-          // Find the three objects in the loaded model
+          // Get current collection states from version manager
+          const collectionStates = this.versionManager ? 
+            this.versionManager.getCollectionStates() : 
+            { vhs1: false, vhs2: false, vhs3: false };
+          
+          // Find and setup the three VHS objects
           gltf.scene.traverse((child) => {
             if (child.name === 'death') {
-              this.deathObject = child.clone();
-              // Position death object to the left
-              this.deathObject.position.set(-5, 0, 0);
-              this.deathObject.scale.set(2, 2, 2);
-              this.deathObject.userData.baseScale = 2;
-              this.deathObject.userData.baseRotation = { x: 0, y: 0, z: 0 };
-              // Only add if vhs1 was collected
-              if (this.collectedStates.vhs1) {
-                this.vhsGroup.add(this.deathObject);
+              this.vhsObjects[1] = this.setupVHSObject(child.clone(), 1, -5, 0, 0);
+              // VHS 1 is ALWAYS visible in end scene, regardless of collection
+              this.vhsGroup.add(this.vhsObjects[1]);
+            } 
+            else if (child.name === 'lovers') {
+              this.vhsObjects[2] = this.setupVHSObject(child.clone(), 2, 0, 0, 0);
+              // Only show VHS 2 if it's been collected
+              if (collectionStates.vhs2) {
+                this.vhsGroup.add(this.vhsObjects[2]);
               }
-            } else if (child.name === 'lovers') {
-              this.loversObject = child.clone();
-              // Position lovers object in the center
-              this.loversObject.position.set(0, 0, 0);
-              this.loversObject.scale.set(2, 2, 2);
-              this.loversObject.userData.baseScale = 2;
-              this.loversObject.userData.baseRotation = { x: 0, y: 0, z: 0 };
-              // Only add if vhs2 was collected
-              if (this.collectedStates.vhs2) {
-                this.vhsGroup.add(this.loversObject);
-              }
-            } else if (child.name === 'magician') {
-              this.magicianObject = child.clone();
-              // Position magician object to the right
-              this.magicianObject.position.set(5, 0, 0);
-              this.magicianObject.scale.set(2, 2, 2);
-              this.magicianObject.userData.baseScale = 2;
-              this.magicianObject.userData.baseRotation = { x: 0, y: 0, z: 0 };
-              // Only add if vhs3 was collected
-              if (this.collectedStates.vhs3) {
-                this.vhsGroup.add(this.magicianObject);
+            } 
+            else if (child.name === 'magician') {
+              this.vhsObjects[3] = this.setupVHSObject(child.clone(), 3, 5, 0, 0);
+              // Only show VHS 3 if it's been collected
+              if (collectionStates.vhs3) {
+                this.vhsGroup.add(this.vhsObjects[3]);
               }
             }
-        });
+          });
 
-          // Initialize hover states for each object
-        // Initialize hover states only for collected objects
-          [this.deathObject, this.loversObject, this.magicianObject].forEach((obj, index) => {
-            const isCollected = (index === 0 && this.collectedStates.vhs1) ||
-                               (index === 1 && this.collectedStates.vhs2) ||
-                               (index === 2 && this.collectedStates.vhs3);
-            if (obj && isCollected) {
+          // Initialize hover states for visible objects
+          Object.values(this.vhsObjects).forEach(obj => {
+            if (obj && obj.parent === this.vhsGroup) {
               this.hoverStates.set(obj, {
                 scale: 1,
                 rotationX: 0,
@@ -164,12 +150,12 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
               const originalMaterial = child.material;
 
               child.material = new THREE.MeshPhysicalMaterial({
-                color: originalMaterial.color,
-                roughness: originalMaterial.roughness,
-                envMap: this.hdriTexture,  // CHANGE: Use this.hdriTexture instead of resources.txthdr
-                // emissive: originalMaterial.color || 0xffffff,
-                // emissiveIntensity: 0.3,
+                color: originalMaterial.color, 
+                metalness: originalMaterial.metalness,
+                envMap: this.hdriTexture,
                 envMapIntensity: 2,
+                // emissiveMap: originalMaterial.color,
+                // emissiveIntensity: 1,
               });
               
               // Copy texture if it exists
@@ -179,6 +165,9 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
             }
           });
 
+          // Adjust positions based on what's visible
+          this.adjustPositionsForVisible();
+          
           console.log('VHS objects loaded for end scene');
           resolve();
         },
@@ -191,25 +180,58 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
     });
   }
 
+  setupVHSObject(obj, vhsNumber, x, y, z) {
+    obj.position.set(x, y, z);
+    obj.scale.set(2, 2, 2);
+    obj.rotation.set(1.5, 0, 0);
+    obj.userData.baseScale = 2;
+    obj.userData.vhsNumber = vhsNumber;
+    obj.userData.baseRotation = { x: 1.5, y: 0, z: 0 };
+    return obj;
+  }
+
+  adjustPositionsForVisible() {
+    const visibleObjects = [];
+    
+    // VHS 1 is always visible
+    if (this.vhsObjects[1]) {
+      visibleObjects.push(this.vhsObjects[1]);
+    }
+    
+    // Add other VHS if they're collected
+    if (this.versionManager) {
+      if (this.versionManager.isVHSCollected(2) && this.vhsObjects[2]) {
+        visibleObjects.push(this.vhsObjects[2]);
+      }
+      if (this.versionManager.isVHSCollected(3) && this.vhsObjects[3]) {
+        visibleObjects.push(this.vhsObjects[3]);
+      }
+    }
+    
+    // Redistribute positions evenly based on visible count
+    const spacing = 7;
+    const totalWidth = (visibleObjects.length - 1) * spacing;
+    const startX = -totalWidth / 2;
+    
+    visibleObjects.forEach((obj, index) => {
+      if (obj) {
+        obj.position.x = startX + (index * spacing);
+        obj.position.y = 0;
+        obj.position.z = 0;
+        obj.rotation.set(1.5, 0, 0);
+      }
+    });
+    
+    console.log(`End scene showing ${visibleObjects.length} VHS object(s)`);
+  }
+
   onMouseClick(event) {
     if (!this.isActive || !this.hoveredObject) return;
     
-    // Determine which object was clicked and trigger version change
-    if (this.hoveredObject === this.deathObject) {
-      console.log('Death object clicked - selecting version 1');
-      if (this.onVersionSelect) {
-        this.onVersionSelect(1);
-      }
-    } else if (this.hoveredObject === this.loversObject) {
-      console.log('Lovers object clicked - selecting version 2');
-      if (this.onVersionSelect) {
-        this.onVersionSelect(2);
-      }
-    } else if (this.hoveredObject === this.magicianObject) {
-      console.log('Magician object clicked - selecting version 3');
-      if (this.onVersionSelect) {
-        this.onVersionSelect(3);
-      }
+    const vhsNumber = this.hoveredObject.userData.vhsNumber;
+    if (vhsNumber && this.onVersionSelect) {
+      console.log(`VHS ${vhsNumber} clicked - selecting version ${vhsNumber}`);
+      this.onVersionSelect(vhsNumber);
     }
   }
 
@@ -223,19 +245,21 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
     // Update the raycaster
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
-    // Check for intersections with VHS objects
-    const objects = [this.deathObject, this.loversObject, this.magicianObject].filter(obj => obj !== null);
-    const intersects = this.raycaster.intersectObjects(objects, true);
+    // Check for intersections with visible VHS objects
+    const visibleObjects = Object.values(this.vhsObjects).filter(obj => 
+      obj && obj.parent === this.vhsGroup
+    );
+    const intersects = this.raycaster.intersectObjects(visibleObjects, true);
 
     // Find the parent VHS object
     let newHoveredObject = null;
     if (intersects.length > 0) {
       let obj = intersects[0].object;
-      // Find the root VHS object (death, lovers, or magician)
+      // Find the root VHS object
       while (obj && obj.parent && obj.parent !== this.vhsGroup) {
         obj = obj.parent;
       }
-      if (objects.includes(obj)) {
+      if (visibleObjects.includes(obj)) {
         newHoveredObject = obj;
       }
     }
@@ -249,7 +273,7 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
           state.targetScale = 1;
           state.targetRotationX = 0;
           state.targetRotationY = 0;
-          state.targetRotationZ = 0;
+          state.targetRotationZ = 0.3;
         }
         this.canvas.style.cursor = 'default';
       }
@@ -262,7 +286,7 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
           state.targetScale = 1.15; // Scale up by 15%
           state.targetRotationX = 0.1;
           state.targetRotationY = 0.2;
-          state.targetRotationZ = -0.5;
+          state.targetRotationZ = -0.6;
         }
         this.canvas.style.cursor = 'pointer';
       }
@@ -274,9 +298,11 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
     
     this.isActive = true;
     
+    // Refresh object visibility based on current collection state
+    this.refreshVisibility();
+    
     // Reset animations
     this.resetAnimations();
-    this.adjustPositionsForCollected();
     
     // Fade in the canvas
     setTimeout(() => {
@@ -308,21 +334,67 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
     }
   }
 
-  resetAnimations() {
-    // Reset positions and rotations for a fresh start
-    if (this.deathObject) {
-      this.deathObject.position.set(-7, 0, 0);
-      this.deathObject.rotation.set(1.5, 0, 0);
+  refreshVisibility() {
+    if (!this.versionManager) return;
+    
+    const collectionStates = this.versionManager.getCollectionStates();
+    
+    // VHS 1 is always visible
+    if (this.vhsObjects[1] && !this.vhsObjects[1].parent) {
+      this.vhsGroup.add(this.vhsObjects[1]);
     }
-    if (this.loversObject) {
-      this.loversObject.position.set(0, 0, 0);
-      this.loversObject.rotation.set(1.5, 0, 0);
+    
+    // VHS 2 - add or remove based on collection
+    if (this.vhsObjects[2]) {
+      if (collectionStates.vhs2 && !this.vhsObjects[2].parent) {
+        this.vhsGroup.add(this.vhsObjects[2]);
+        // Initialize hover state if needed
+        if (!this.hoverStates.has(this.vhsObjects[2])) {
+          this.hoverStates.set(this.vhsObjects[2], {
+            scale: 1,
+            rotationX: 0,
+            rotationY: 0,
+            rotationZ: 0,
+            targetScale: 1,
+            targetRotationX: 0,
+            targetRotationY: 0,
+            targetRotationZ: 0
+          });
+        }
+      } else if (!collectionStates.vhs2 && this.vhsObjects[2].parent) {
+        this.vhsGroup.remove(this.vhsObjects[2]);
+        this.hoverStates.delete(this.vhsObjects[2]);
+      }
     }
-    if (this.magicianObject) {
-      this.magicianObject.position.set(7, 0, 0);
-      this.magicianObject.rotation.set(1.5, 0, 0);
+    
+    // VHS 3 - add or remove based on collection
+    if (this.vhsObjects[3]) {
+      if (collectionStates.vhs3 && !this.vhsObjects[3].parent) {
+        this.vhsGroup.add(this.vhsObjects[3]);
+        // Initialize hover state if needed
+        if (!this.hoverStates.has(this.vhsObjects[3])) {
+          this.hoverStates.set(this.vhsObjects[3], {
+            scale: 1,
+            rotationX: 0,
+            rotationY: 0,
+            rotationZ: 0,
+            targetScale: 1,
+            targetRotationX: 0,
+            targetRotationY: 0,
+            targetRotationZ: 0
+          });
+        }
+      } else if (!collectionStates.vhs3 && this.vhsObjects[3].parent) {
+        this.vhsGroup.remove(this.vhsObjects[3]);
+        this.hoverStates.delete(this.vhsObjects[3]);
+      }
     }
+    
+    // Adjust positions after visibility changes
+    this.adjustPositionsForVisible();
+  }
 
+  resetAnimations() {
     // Reset hover states
     this.hoverStates.forEach(state => {
       state.scale = 1;
@@ -334,33 +406,16 @@ constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) 
       state.targetRotationY = 0;
       state.targetRotationZ = 0;
     });
-  }
-
-adjustPositionsForCollected() {
-    // Reposition objects based on which ones are collected
-    const collectedObjects = [];
     
-    if (this.collectedStates.vhs1 && this.deathObject) {
-      collectedObjects.push(this.deathObject);
-    }
-    if (this.collectedStates.vhs2 && this.loversObject) {
-      collectedObjects.push(this.loversObject);
-    }
-    if (this.collectedStates.vhs3 && this.magicianObject) {
-      collectedObjects.push(this.magicianObject);
-    }
-    
-    // Redistribute positions based on how many objects are shown
-    const spacing = 7; // Distance between objects
-    const totalWidth = (collectedObjects.length - 1) * spacing;
-    const startX = -totalWidth / 2;
-    
-    collectedObjects.forEach((obj, index) => {
-      obj.position.x = startX + (index * spacing);
-      obj.rotation.set(1.5, 0, 0);
+    // Reset object transforms
+    Object.values(this.vhsObjects).forEach(obj => {
+      if (obj && obj.parent === this.vhsGroup) {
+        const baseRotation = obj.userData.baseRotation || { x: 1.5, y: 0, z: 0 };
+        obj.rotation.set(baseRotation.x, baseRotation.y, baseRotation.z);
+        const baseScale = obj.userData.baseScale || 2;
+        obj.scale.setScalar(baseScale);
+      }
     });
-    
-    console.log(`Showing ${collectedObjects.length} collected VHS objects`);
   }
 
   animate() {
@@ -371,9 +426,9 @@ adjustPositionsForCollected() {
     const time = Date.now() * 0.001;
     const lerpFactor = 0.1; // Smooth transition speed
 
-    // Animate each VHS object
-    [this.deathObject, this.loversObject, this.magicianObject].forEach((obj, index) => {
-      if (!obj) return;
+    // Animate each visible VHS object
+    Object.values(this.vhsObjects).forEach((obj, index) => {
+      if (!obj || obj.parent !== this.vhsGroup) return;
 
       const state = this.hoverStates.get(obj);
       if (state) {
@@ -388,10 +443,11 @@ adjustPositionsForCollected() {
         obj.scale.setScalar(baseScale * state.scale);
 
         // Apply rotation (combine with floating animation)
-        const floatOffset = index * (Math.PI * 2 / 3);
-        obj.rotation.x = 1.5 + state.rotationX;
-        obj.rotation.y = state.rotationY;
-        obj.rotation.z = state.rotationZ;
+        const baseRotation = obj.userData.baseRotation || { x: 1.5, y: 0, z: 0 };
+        const floatOffset = obj.userData.vhsNumber * (Math.PI * 2 / 3);
+        obj.rotation.x = baseRotation.x + state.rotationX;
+        obj.rotation.y = baseRotation.y + state.rotationY;
+        obj.rotation.z = baseRotation.z + state.rotationZ;
 
         // Floating animation
         obj.position.y = Math.sin(time * 2 + floatOffset) * 0.1;
@@ -421,6 +477,7 @@ adjustPositionsForCollected() {
     // Remove event listeners
     window.removeEventListener('mousemove', (event) => this.onMouseMove(event));
     window.removeEventListener('click', (event) => this.onMouseClick(event));
+    window.removeEventListener('resize', () => this.onWindowResize());
     
     if (this.canvas && this.canvas.parentNode) {
       this.canvas.parentNode.removeChild(this.canvas);
@@ -434,8 +491,14 @@ adjustPositionsForCollected() {
     if (this.vhsGroup) {
       this.vhsGroup.traverse((child) => {
         if (child.isMesh) {
-          child.geometry.dispose();
-          child.material.dispose();
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(mat => mat.dispose());
+            } else {
+              child.material.dispose();
+            }
+          }
         }
       });
     }
@@ -443,9 +506,7 @@ adjustPositionsForCollected() {
     this.scene = null;
     this.camera = null;
     this.renderer = null;
-    this.deathObject = null;
-    this.loversObject = null;
-    this.magicianObject = null;
+    this.vhsObjects = {};
     this.vhsGroup = null;
     this.canvas = null;
     this.raycaster = null;
