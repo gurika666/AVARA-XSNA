@@ -1,4 +1,4 @@
-// end-scene.js - A separate Three.js scene with improved VHS collection logic
+// end-scene.js - Responsive Three.js scene with improved VHS collection logic
 import * as THREE from "three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
@@ -12,17 +12,25 @@ class EndScene {
     this.animationId = null;
     this.hdriTexture = hdriTexture;
     this.onVersionSelect = onVersionSelect;
-    this.versionManager = versionManager; // Use version manager for collection states
+    this.versionManager = versionManager;
     
     // VHS objects
-    this.vhsObjects = {}; // Store by number: 1, 2, 3
+    this.vhsObjects = {};
     this.vhsGroup = null;
     
     // Hover tracking
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
     this.hoveredObject = null;
-    this.hoverStates = new Map(); // Track hover animation states
+    this.hoverStates = new Map();
+    
+    // Responsive settings
+    this.baseSpacing = 7; // Base spacing for desktop
+    this.baseScale = 2; // Base scale for desktop
+    this.baseCameraZ = 12; // Base camera distance for desktop
+    
+    // DEBUG MODE - Set to false for production
+    this.debugMode = false;
   }
 
   async init() {
@@ -50,25 +58,25 @@ class EndScene {
     });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setClearColor(0x000000, 0); // Transparent background
+    this.renderer.setClearColor(0x000000, 0);
 
     // Setup scene
     this.scene = new THREE.Scene();
     
-    // Apply HDRI to scene environment for global reflections
+    // Apply HDRI to scene environment
     if (this.hdriTexture) {
       this.scene.environment = this.hdriTexture;
     }
 
-    // Setup camera
+    // Setup camera with responsive FOV
+    const fov = this.getResponsiveFOV();
     this.camera = new THREE.PerspectiveCamera(
-      75,
+      fov,
       window.innerWidth / window.innerHeight,
       0.1,
       1000
     );
-    this.camera.position.z = 12;
-    this.camera.position.y = 0;
+    this.updateCameraPosition();
 
     // Create a group to hold all VHS objects
     this.vhsGroup = new THREE.Group();
@@ -85,14 +93,55 @@ class EndScene {
     light.position.set(5, 10, 7.5);
     this.scene.add(light);
 
-    // Add mouse move listener
+    // Add event listeners
     window.addEventListener('mousemove', (event) => this.onMouseMove(event));
-    
-    // Add click listener
     window.addEventListener('click', (event) => this.onMouseClick(event));
-
-    // Add resize listener
     window.addEventListener('resize', () => this.onWindowResize());
+  }
+
+  getResponsiveFOV() {
+    const width = window.innerWidth;
+    // Increase FOV on smaller screens to fit content better
+    if (width < 480) return 90;
+    if (width < 768) return 85;
+    if (width < 1024) return 80;
+    return 75;
+  }
+
+  getResponsiveScale() {
+    const width = window.innerWidth;
+    // Scale down objects on smaller screens
+    if (width < 480) return this.baseScale * 0.5;
+    if (width < 768) return this.baseScale * 0.6;
+    if (width < 1024) return this.baseScale * 0.8;
+    return this.baseScale;
+  }
+
+  getResponsiveSpacing() {
+    const width = window.innerWidth;
+    // Adjust spacing based on screen width
+    if (width < 480) return this.baseSpacing * 0.4;
+    if (width < 768) return this.baseSpacing * 0.5;
+    if (width < 1024) return this.baseSpacing * 0.7;
+    if (width < 1440) return this.baseSpacing * 0.85;
+    return this.baseSpacing;
+  }
+
+  updateCameraPosition() {
+    const width = window.innerWidth;
+    // Move camera closer on smaller screens
+    let cameraZ = this.baseCameraZ;
+    
+    if (width < 480) {
+      cameraZ = this.baseCameraZ * 1.5;
+    } else if (width < 768) {
+      cameraZ = this.baseCameraZ * 1.3;
+    } else if (width < 1024) {
+      cameraZ = this.baseCameraZ * 1.1;
+    }
+    
+    this.camera.position.z = cameraZ;
+    this.camera.position.y = 0;
   }
 
   async loadVHSObjects() {
@@ -100,28 +149,35 @@ class EndScene {
       new GLTFLoader().load(
         'mesh/vhs.glb',
         (gltf) => {
-          // Get current collection states from version manager
-          const collectionStates = this.versionManager ? 
-            this.versionManager.getCollectionStates() : 
-            { vhs1: false, vhs2: false, vhs3: false };
+          // Get collection states (or use debug mode)
+          const collectionStates = this.debugMode ? 
+            { vhs1: true, vhs2: true, vhs3: true } : // DEBUG: All collected
+            (this.versionManager ? 
+              this.versionManager.getCollectionStates() : 
+              { vhs1: false, vhs2: false, vhs3: false });
+          
+          console.log('DEBUG MODE:', this.debugMode ? 'ON' : 'OFF');
+          console.log('Collection states:', collectionStates);
+          
+          const responsiveScale = this.getResponsiveScale();
           
           // Find and setup the three VHS objects
           gltf.scene.traverse((child) => {
             if (child.name === 'death') {
-              this.vhsObjects[1] = this.setupVHSObject(child.clone(), 1, -5, 0, 0);
-              // VHS 1 is ALWAYS visible in end scene, regardless of collection
+              this.vhsObjects[1] = this.setupVHSObject(child.clone(), 1, responsiveScale);
+              // VHS 1 is ALWAYS visible in end scene
               this.vhsGroup.add(this.vhsObjects[1]);
             } 
             else if (child.name === 'lovers') {
-              this.vhsObjects[2] = this.setupVHSObject(child.clone(), 2, 0, 0, 0);
-              // Only show VHS 2 if it's been collected
+              this.vhsObjects[2] = this.setupVHSObject(child.clone(), 2, responsiveScale);
+              // Only show VHS 2 if collected (or debug mode)
               if (collectionStates.vhs2) {
                 this.vhsGroup.add(this.vhsObjects[2]);
               }
             } 
             else if (child.name === 'magician') {
-              this.vhsObjects[3] = this.setupVHSObject(child.clone(), 3, 5, 0, 0);
-              // Only show VHS 3 if it's been collected
+              this.vhsObjects[3] = this.setupVHSObject(child.clone(), 3, responsiveScale);
+              // Only show VHS 3 if collected (or debug mode)
               if (collectionStates.vhs3) {
                 this.vhsGroup.add(this.vhsObjects[3]);
               }
@@ -154,8 +210,6 @@ class EndScene {
                 metalness: originalMaterial.metalness,
                 envMap: this.hdriTexture,
                 envMapIntensity: 2,
-                // emissiveMap: originalMaterial.color,
-                // emissiveIntensity: 1,
               });
               
               // Copy texture if it exists
@@ -180,11 +234,11 @@ class EndScene {
     });
   }
 
-  setupVHSObject(obj, vhsNumber, x, y, z) {
-    obj.position.set(x, y, z);
-    obj.scale.set(2, 2, 2);
+  setupVHSObject(obj, vhsNumber, scale) {
+    obj.position.set(0, 0, 0); // Will be set in adjustPositionsForVisible
+    obj.scale.set(scale, scale, scale);
     obj.rotation.set(1.5, 0, 0);
-    obj.userData.baseScale = 2;
+    obj.userData.baseScale = scale;
     obj.userData.vhsNumber = vhsNumber;
     obj.userData.baseRotation = { x: 1.5, y: 0, z: 0 };
     return obj;
@@ -194,35 +248,47 @@ class EndScene {
     const visibleObjects = [];
     
     // VHS 1 is always visible
-    if (this.vhsObjects[1]) {
+    if (this.vhsObjects[1] && this.vhsObjects[1].parent === this.vhsGroup) {
       visibleObjects.push(this.vhsObjects[1]);
     }
     
-    // Add other VHS if they're collected
-    if (this.versionManager) {
-      if (this.versionManager.isVHSCollected(2) && this.vhsObjects[2]) {
-        visibleObjects.push(this.vhsObjects[2]);
-      }
-      if (this.versionManager.isVHSCollected(3) && this.vhsObjects[3]) {
-        visibleObjects.push(this.vhsObjects[3]);
-      }
+    // Add other VHS if they're collected (or debug mode)
+    const collectionStates = this.debugMode ?
+      { vhs1: true, vhs2: true, vhs3: true } : // DEBUG: All collected
+      (this.versionManager ? this.versionManager.getCollectionStates() : {});
+    
+    if ((this.debugMode || collectionStates.vhs2) && this.vhsObjects[2] && this.vhsObjects[2].parent === this.vhsGroup) {
+      visibleObjects.push(this.vhsObjects[2]);
+    }
+    if ((this.debugMode || collectionStates.vhs3) && this.vhsObjects[3] && this.vhsObjects[3].parent === this.vhsGroup) {
+      visibleObjects.push(this.vhsObjects[3]);
     }
     
-    // Redistribute positions evenly based on visible count
-    const spacing = 7;
-    const totalWidth = (visibleObjects.length - 1) * spacing;
-    const startX = -totalWidth / 2;
+    // Get responsive spacing
+    const spacing = this.getResponsiveSpacing();
     
-    visibleObjects.forEach((obj, index) => {
-      if (obj) {
-        obj.position.x = startX + (index * spacing);
-        obj.position.y = 0;
-        obj.position.z = 0;
-        obj.rotation.set(1.5, 0, 0);
-      }
+    // Calculate positions based on visible count
+    if (visibleObjects.length === 1) {
+      // Center single object
+      visibleObjects[0].position.x = 0;
+    } else if (visibleObjects.length === 2) {
+      // Two objects: balanced spacing
+      visibleObjects[0].position.x = -spacing / 2;
+      visibleObjects[1].position.x = spacing / 2;
+    } else if (visibleObjects.length === 3) {
+      // Three objects: evenly distributed
+      visibleObjects[0].position.x = -spacing;
+      visibleObjects[1].position.x = 0;
+      visibleObjects[2].position.x = spacing;
+    }
+    
+    // Set Y and Z for all
+    visibleObjects.forEach(obj => {
+      obj.position.y = 0;
+      obj.position.z = 0;
     });
     
-    console.log(`End scene showing ${visibleObjects.length} VHS object(s)`);
+    console.log(`End scene showing ${visibleObjects.length} VHS object(s) with spacing: ${spacing}`);
   }
 
   onMouseClick(event) {
@@ -283,7 +349,7 @@ class EndScene {
       if (this.hoveredObject) {
         const state = this.hoverStates.get(this.hoveredObject);
         if (state) {
-          state.targetScale = 1.15; // Scale up by 15%
+          state.targetScale = 1.15;
           state.targetRotationX = 0.1;
           state.targetRotationY = 0.2;
           state.targetRotationZ = -0.6;
@@ -335,13 +401,23 @@ class EndScene {
   }
 
   refreshVisibility() {
-    if (!this.versionManager) return;
+    if (!this.versionManager && !this.debugMode) return;
     
-    const collectionStates = this.versionManager.getCollectionStates();
+    const collectionStates = this.debugMode ?
+      { vhs1: true, vhs2: true, vhs3: true } : // DEBUG: All collected
+      this.versionManager.getCollectionStates();
+    
+    const responsiveScale = this.getResponsiveScale();
     
     // VHS 1 is always visible
     if (this.vhsObjects[1] && !this.vhsObjects[1].parent) {
       this.vhsGroup.add(this.vhsObjects[1]);
+    }
+    
+    // Update scale for VHS 1
+    if (this.vhsObjects[1]) {
+      this.vhsObjects[1].userData.baseScale = responsiveScale;
+      this.vhsObjects[1].scale.setScalar(responsiveScale);
     }
     
     // VHS 2 - add or remove based on collection
@@ -365,6 +441,12 @@ class EndScene {
         this.vhsGroup.remove(this.vhsObjects[2]);
         this.hoverStates.delete(this.vhsObjects[2]);
       }
+      
+      // Update scale
+      if (this.vhsObjects[2] && this.vhsObjects[2].parent) {
+        this.vhsObjects[2].userData.baseScale = responsiveScale;
+        this.vhsObjects[2].scale.setScalar(responsiveScale);
+      }
     }
     
     // VHS 3 - add or remove based on collection
@@ -387,6 +469,12 @@ class EndScene {
       } else if (!collectionStates.vhs3 && this.vhsObjects[3].parent) {
         this.vhsGroup.remove(this.vhsObjects[3]);
         this.hoverStates.delete(this.vhsObjects[3]);
+      }
+      
+      // Update scale
+      if (this.vhsObjects[3] && this.vhsObjects[3].parent) {
+        this.vhsObjects[3].userData.baseScale = responsiveScale;
+        this.vhsObjects[3].scale.setScalar(responsiveScale);
       }
     }
     
@@ -412,7 +500,7 @@ class EndScene {
       if (obj && obj.parent === this.vhsGroup) {
         const baseRotation = obj.userData.baseRotation || { x: 1.5, y: 0, z: 0 };
         obj.rotation.set(baseRotation.x, baseRotation.y, baseRotation.z);
-        const baseScale = obj.userData.baseScale || 2;
+        const baseScale = obj.userData.baseScale || this.getResponsiveScale();
         obj.scale.setScalar(baseScale);
       }
     });
@@ -424,7 +512,7 @@ class EndScene {
     this.animationId = requestAnimationFrame(() => this.animate());
 
     const time = Date.now() * 0.001;
-    const lerpFactor = 0.1; // Smooth transition speed
+    const lerpFactor = 0.1;
 
     // Animate each visible VHS object
     Object.values(this.vhsObjects).forEach((obj, index) => {
@@ -439,10 +527,10 @@ class EndScene {
         state.rotationZ += (state.targetRotationZ - state.rotationZ) * lerpFactor;
 
         // Apply scale
-        const baseScale = obj.userData.baseScale || 2;
+        const baseScale = obj.userData.baseScale || this.getResponsiveScale();
         obj.scale.setScalar(baseScale * state.scale);
 
-        // Apply rotation (combine with floating animation)
+        // Apply rotation
         const baseRotation = obj.userData.baseRotation || { x: 1.5, y: 0, z: 0 };
         const floatOffset = obj.userData.vhsNumber * (Math.PI * 2 / 3);
         obj.rotation.x = baseRotation.x + state.rotationX;
@@ -462,13 +550,37 @@ class EndScene {
 
   onWindowResize() {
     if (this.camera) {
+      // Update FOV based on new window size
+      this.camera.fov = this.getResponsiveFOV();
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
+      
+      // Update camera position
+      this.updateCameraPosition();
     }
 
     if (this.renderer) {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
+    
+    // Update all VHS object scales and positions
+    const responsiveScale = this.getResponsiveScale();
+    Object.values(this.vhsObjects).forEach(obj => {
+      if (obj && obj.parent === this.vhsGroup) {
+        obj.userData.baseScale = responsiveScale;
+        // Don't immediately set scale - let animation handle it
+      }
+    });
+    
+    // Reposition objects with new spacing
+    this.adjustPositionsForVisible();
+  }
+
+  // Method to toggle debug mode
+  setDebugMode(enabled) {
+    this.debugMode = enabled;
+    console.log('Debug mode:', enabled ? 'ENABLED' : 'DISABLED');
+    this.refreshVisibility();
   }
 
   dispose() {

@@ -1047,7 +1047,7 @@ async function completeSetup() {
   );
 
   await endScene.init();
-  endScene.show();
+  endScene.hide();
 
   if (loadedInput) {
     loadedInput.value = true;
