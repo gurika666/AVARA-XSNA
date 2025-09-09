@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 class EndScene {
-  constructor(hdriTexture = null) {  // ADD: Accept HDRI texture as parameter
+constructor(hdriTexture = null, onVersionSelect = null, collectedStates = null) {  // ADD: Accept collected states
     this.scene = null;
     this.camera = null;
     this.renderer = null;
@@ -11,6 +11,8 @@ class EndScene {
     this.isActive = false;
     this.animationId = null;
     this.hdriTexture = hdriTexture;  // ADD: Store the HDRI texture
+    this.onVersionSelect = onVersionSelect;
+    this.collectedStates = collectedStates || { vhs1: false, vhs2: false, vhs3: false };  // ADD: Store collected states
     
     // VHS objects
     this.deathObject = null;
@@ -83,8 +85,11 @@ class EndScene {
     const ambientLight = new THREE.AmbientLight(0x111111, 0);
     this.scene.add(ambientLight);
 
-    // Add mouse move listener
+  // Add mouse move listener
     window.addEventListener('mousemove', (event) => this.onMouseMove(event));
+    
+    // Add click listener
+    window.addEventListener('click', (event) => this.onMouseClick(event));
 
     // Add resize listener
     window.addEventListener('resize', () => this.onWindowResize());
@@ -104,7 +109,10 @@ class EndScene {
               this.deathObject.scale.set(2, 2, 2);
               this.deathObject.userData.baseScale = 2;
               this.deathObject.userData.baseRotation = { x: 0, y: 0, z: 0 };
-              this.vhsGroup.add(this.deathObject);
+              // Only add if vhs1 was collected
+              if (this.collectedStates.vhs1) {
+                this.vhsGroup.add(this.deathObject);
+              }
             } else if (child.name === 'lovers') {
               this.loversObject = child.clone();
               // Position lovers object in the center
@@ -112,7 +120,10 @@ class EndScene {
               this.loversObject.scale.set(2, 2, 2);
               this.loversObject.userData.baseScale = 2;
               this.loversObject.userData.baseRotation = { x: 0, y: 0, z: 0 };
-              this.vhsGroup.add(this.loversObject);
+              // Only add if vhs2 was collected
+              if (this.collectedStates.vhs2) {
+                this.vhsGroup.add(this.loversObject);
+              }
             } else if (child.name === 'magician') {
               this.magicianObject = child.clone();
               // Position magician object to the right
@@ -120,13 +131,20 @@ class EndScene {
               this.magicianObject.scale.set(2, 2, 2);
               this.magicianObject.userData.baseScale = 2;
               this.magicianObject.userData.baseRotation = { x: 0, y: 0, z: 0 };
-              this.vhsGroup.add(this.magicianObject);
+              // Only add if vhs3 was collected
+              if (this.collectedStates.vhs3) {
+                this.vhsGroup.add(this.magicianObject);
+              }
             }
-          });
+        });
 
           // Initialize hover states for each object
-          [this.deathObject, this.loversObject, this.magicianObject].forEach(obj => {
-            if (obj) {
+        // Initialize hover states only for collected objects
+          [this.deathObject, this.loversObject, this.magicianObject].forEach((obj, index) => {
+            const isCollected = (index === 0 && this.collectedStates.vhs1) ||
+                               (index === 1 && this.collectedStates.vhs2) ||
+                               (index === 2 && this.collectedStates.vhs3);
+            if (obj && isCollected) {
               this.hoverStates.set(obj, {
                 scale: 1,
                 rotationX: 0,
@@ -171,6 +189,28 @@ class EndScene {
         }
       );
     });
+  }
+
+  onMouseClick(event) {
+    if (!this.isActive || !this.hoveredObject) return;
+    
+    // Determine which object was clicked and trigger version change
+    if (this.hoveredObject === this.deathObject) {
+      console.log('Death object clicked - selecting version 1');
+      if (this.onVersionSelect) {
+        this.onVersionSelect(1);
+      }
+    } else if (this.hoveredObject === this.loversObject) {
+      console.log('Lovers object clicked - selecting version 2');
+      if (this.onVersionSelect) {
+        this.onVersionSelect(2);
+      }
+    } else if (this.hoveredObject === this.magicianObject) {
+      console.log('Magician object clicked - selecting version 3');
+      if (this.onVersionSelect) {
+        this.onVersionSelect(3);
+      }
+    }
   }
 
   onMouseMove(event) {
@@ -236,6 +276,7 @@ class EndScene {
     
     // Reset animations
     this.resetAnimations();
+    this.adjustPositionsForCollected();
     
     // Fade in the canvas
     setTimeout(() => {
@@ -295,6 +336,33 @@ class EndScene {
     });
   }
 
+adjustPositionsForCollected() {
+    // Reposition objects based on which ones are collected
+    const collectedObjects = [];
+    
+    if (this.collectedStates.vhs1 && this.deathObject) {
+      collectedObjects.push(this.deathObject);
+    }
+    if (this.collectedStates.vhs2 && this.loversObject) {
+      collectedObjects.push(this.loversObject);
+    }
+    if (this.collectedStates.vhs3 && this.magicianObject) {
+      collectedObjects.push(this.magicianObject);
+    }
+    
+    // Redistribute positions based on how many objects are shown
+    const spacing = 7; // Distance between objects
+    const totalWidth = (collectedObjects.length - 1) * spacing;
+    const startX = -totalWidth / 2;
+    
+    collectedObjects.forEach((obj, index) => {
+      obj.position.x = startX + (index * spacing);
+      obj.rotation.set(1.5, 0, 0);
+    });
+    
+    console.log(`Showing ${collectedObjects.length} collected VHS objects`);
+  }
+
   animate() {
     if (!this.isActive) return;
     
@@ -352,6 +420,7 @@ class EndScene {
     
     // Remove event listeners
     window.removeEventListener('mousemove', (event) => this.onMouseMove(event));
+    window.removeEventListener('click', (event) => this.onMouseClick(event));
     
     if (this.canvas && this.canvas.parentNode) {
       this.canvas.parentNode.removeChild(this.canvas);

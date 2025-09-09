@@ -30,6 +30,11 @@ import { DepthDrivenBlurPass } from './custom-dof.js';
 
 import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-app/webgl2';
 
+
+let version1 = true;  // Default scene
+let version2 = false;
+let version3 = false;
+
 // State Machine Class
 class AnimationStateMachine {
   constructor() {
@@ -646,7 +651,6 @@ async function loadGLB(path, manager) {
   });
 }
 
-
 async function loadAudio(path) {
   return new Promise((resolve) => {
     AudioController.loadAudio(path);
@@ -816,7 +820,6 @@ rive.on(EventType.RiveEvent || 'vhs3event', (event) => {
 
 }
 
-
 function updateFocusBooleans(audioTime) {
   // Check and trigger focus1
   if (!focus1Triggered && !vhs1collected && audioTime >= focusTimes.focus1Time) {
@@ -909,7 +912,6 @@ function startFocusTimer(focusNumber) {
   else if (focusNumber === 3) focus3Timer = timer;
 }
 
-
 function updateLyricText(audioTime) {
   if (!lyricText) return;
   
@@ -928,6 +930,27 @@ function updateLyricText(audioTime) {
  lyricText.value = currentText;
 }
 
+function handleVersionChange(versionNumber) {
+  // Set version booleans based on selected object
+  version1 = (versionNumber === 1);
+  version2 = (versionNumber === 2);
+  version3 = (versionNumber === 3);
+  
+  console.log(`Version changed to: version${versionNumber} - version1: ${version1}, version2: ${version2}, version3: ${version3}`);
+  
+  // Reset audio and restart scene
+  AudioController.reset();
+  if (finished) finished.value = false;
+  
+  // Hide end scene and restart animation
+  if (endScene) {
+    endScene.hide();
+  }
+  
+  // Start animation from beginning
+  startAnimation();
+}
+
 function togglePlayPause() {
   if (!isSetupComplete) {
     return;
@@ -944,6 +967,8 @@ async function completeSetup() {
   if (isSetupComplete) return;
   
   await new Promise(resolve => setTimeout(resolve, 1000));
+
+  console.log('Starting with version1 (default scene)');
 
   camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 2, 0);
@@ -994,9 +1019,21 @@ async function completeSetup() {
   isSetupComplete = true;
 
 
-    endScene = new EndScene(resources.txthdr);
+   endScene = new EndScene(
+    resources.txthdr, 
+    (versionNumber) => {
+      // Handle version change callback
+      handleVersionChange(versionNumber);
+    },
+    {
+      vhs1: vhs1collected || true,
+      vhs2: vhs2collected || false,
+      vhs3: vhs3collected || false
+    }
+  );
+
   await endScene.init();
-  endScene.show();
+  endScene.hide();
 
   if (loadedInput) {
     loadedInput.value = true;
