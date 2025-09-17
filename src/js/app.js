@@ -1,4 +1,4 @@
-// app.js - Optimized main application with improved version/VHS system
+// app.js - Simplified version with minimal color changes
 import * as THREE from "three";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -30,33 +30,83 @@ import { DepthDrivenBlurPass } from './custom-dof.js';
 
 import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-app/webgl2';
 
+//COLORS...................
+
+let Pink = new THREE.Color(0xff1a75);
+let darkpink = new THREE.Color(0x99003d);
+let blue =  new THREE.Color(0x0000ff);
+let darkblue = new THREE.Color(0x000099);
+let red = new THREE.Color(0xff0000);
+let darkred = new THREE.Color(0x990000);
+let black = new THREE.Color(0x000000);
+
+// ============================================
+// SIMPLE VERSION CONFIGURATIONS
+// ============================================
+const VERSION_CONFIGS = {
+  1: {
+    name: 'Death',
+  
+    
+    sky: {
+      cloudColor: new THREE.Vector3(0, 0, 0),
+      skyTopColor: new THREE.Vector3(0.082, 0.090, 0.380),
+      skyBottomColor: new THREE.Vector3(0, 0, 0)
+    },
+    stars: {
+      nebulaColor1: new THREE.Vector3(1.0, 0.2, 0.5),
+      nebulaColor2: new THREE.Vector3(0.1, 0.5, 1.0),
+      nebulaColor3: new THREE.Vector3(1.0, 0.6, 0.1)
+    }
+  },
+  2: {
+    name: 'Lovers',
+ 
+    sky: {
+      cloudColor: new THREE.Vector3(0, 0, 0),
+      skyTopColor: new THREE.Vector3(0.082, 0.090, 0.380),
+      skyBottomColor: new THREE.Vector3(0, 0, 0)
+    },
+    stars: {
+      nebulaColor1: new THREE.Vector3(1.0, 0.4, 0.6),
+      nebulaColor2: new THREE.Vector3(0.9, 0.6, 0.3),
+      nebulaColor3: new THREE.Vector3(0.7, 0.3, 0.9)
+    }
+  },
+  3: {
+    name: 'Magician',
+   
+    sky: {
+      cloudColor: new THREE.Vector3(0, 0, 0),
+      skyTopColor: new THREE.Vector3(0.1, 0.0, 0.4),
+      skyBottomColor: new THREE.Vector3(0, 0, 0)
+    },
+    stars: {
+      nebulaColor1: new THREE.Vector3(1.0, 0.4, 0.6),
+      nebulaColor2: new THREE.Vector3(0.9, 0.6, 0.3),
+      nebulaColor3: new THREE.Vector3(0.7, 0.3, 0.9)
+    }
+  }
+};
+
 // ============================================
 // VERSION & VHS COLLECTION SYSTEM
 // ============================================
 
 class VersionManager {
   constructor() {
-    this.currentVersion = 1; // Always start with version 1
-    
-    // Track VHS collection state globally (persists across version changes)
+    this.currentVersion = 1;
     this.vhsCollected = {
       vhs1: false,
       vhs2: false,
       vhs3: false
-    };
-    
-    // Version-specific settings (if needed for different scenes)
-    this.versionSettings = {
-      1: { name: 'Death', audioPath: 'audio/xsna.mp3' },
-      2: { name: 'Lovers', audioPath: 'audio/xsna.mp3' }, // Change if different audio
-      3: { name: 'Magician', audioPath: 'audio/xsna.mp3' } // Change if different audio
     };
   }
   
   setVersion(versionNumber) {
     if (versionNumber < 1 || versionNumber > 3) return false;
     this.currentVersion = versionNumber;
-    console.log(`Version set to: ${versionNumber} (${this.versionSettings[versionNumber].name})`);
+    console.log(`Version set to: ${versionNumber} (${VERSION_CONFIGS[versionNumber].name})`);
     return true;
   }
   
@@ -103,14 +153,14 @@ class VersionManager {
 class FocusManager {
   constructor(versionManager) {
     this.versionManager = versionManager;
-    this.focusTriggered = {}; // Track if focus was triggered this playthrough
+    this.focusTriggered = {};
     this.focusTimers = {};
-    this.FOCUS_TIMEOUT = 10; // seconds
+    this.FOCUS_TIMEOUT = 10;
     
     this.focusTimes = {
-      1: 2,   // Focus 1 triggers at 2 seconds
-      2: 20,  // Focus 2 triggers at 20 seconds
-      3: 30   // Focus 3 triggers at 30 seconds
+      1: 2,
+      2: 20,
+      3: 30
     };
   }
   
@@ -125,12 +175,10 @@ class FocusManager {
   
   updateFocus(audioTime, focusInputs, hoverInput) {
     for (let i = 1; i <= 3; i++) {
-      // Skip if VHS is already collected or focus already triggered
       if (this.versionManager.isVHSCollected(i) || this.focusTriggered[i]) {
         continue;
       }
       
-      // Check if it's time to trigger this focus
       if (audioTime >= this.focusTimes[i]) {
         this.triggerFocus(i, focusInputs, hoverInput);
         this.focusTriggered[i] = true;
@@ -141,21 +189,17 @@ class FocusManager {
   triggerFocus(focusNumber, focusInputs, hoverInput) {
     console.log(`Triggering focus ${focusNumber}`);
     
-    // Disable all other focuses
     for (let i = 1; i <= 3; i++) {
       if (focusInputs[i]) {
         focusInputs[i].value = false;
       }
     }
     
-    // Clear existing timers
     this.clearAllTimers();
     
-    // Enable this focus
     if (focusInputs[focusNumber]) {
       focusInputs[focusNumber].value = true;
       
-      // Start timeout timer
       this.focusTimers[focusNumber] = setTimeout(() => {
         if (focusInputs[focusNumber]) {
           focusInputs[focusNumber].value = false;
@@ -169,7 +213,6 @@ class FocusManager {
   }
   
   collectVHS(vhsNumber, focusInputs, hoverInput, vhsCountInput) {
-    // Clear all focuses
     for (let i = 1; i <= 3; i++) {
       if (focusInputs[i]) {
         focusInputs[i].value = false;
@@ -180,13 +223,10 @@ class FocusManager {
       hoverInput.value = false;
     }
     
-    // Clear timers
     this.clearAllTimers();
     
-    // Mark as collected in version manager
     this.versionManager.collectVHS(vhsNumber);
     
-    // Update count
     if (vhsCountInput) {
       vhsCountInput.value = this.versionManager.getCollectedCount();
     }
@@ -232,10 +272,9 @@ class AnimationStateMachine {
       swirlAnimActive: false
     };
     
-    // Swirl animation timing (relative to state 4 entry)
     this.swirlAnimation = {
-      startDelay: 25,  // Start 25 seconds after entering FINAL state (85 + 25 = 110)
-      duration: 10,    // Run for 10 seconds (110 to 120)
+      startDelay: 25,
+      duration: 10,
       stateEntryTime: null
     };
   }
@@ -257,7 +296,6 @@ class AnimationStateMachine {
       this.transitionTo(newState, audioTime);
     }
     
-    // Update swirl animation flag based on time in FINAL state
     if (this.currentState === this.STATES.FINAL && this.swirlAnimation.stateEntryTime !== null) {
       const timeInState = audioTime - this.swirlAnimation.stateEntryTime;
       const swirlStart = this.swirlAnimation.startDelay;
@@ -319,9 +357,8 @@ class AnimationStateMachine {
           skyShaderActive: false,
           vegetationActive: false,
           secondCameraAnimActive: true,
-          swirlAnimActive: false  // Will be updated based on time in state
+          swirlAnimActive: false
         };
-        // Record when we entered FINAL state for swirl timing
         this.swirlAnimation.stateEntryTime = audioTime;
         break;
     }
@@ -343,7 +380,7 @@ class AnimationStateMachine {
   
   getSwirlProgress(audioTime) {
     if (!this.stateFlags.swirlAnimActive || this.swirlAnimation.stateEntryTime === null) {
-      return -1; // Not active
+      return -1;
     }
     
     const timeInState = audioTime - this.swirlAnimation.stateEntryTime;
@@ -382,10 +419,10 @@ let focus1, focus2, focus3;
 let vhscount;
 let finished;
 
-let preFocusPosition = null;  // Store camera position before zoom
-let isHoverFocused = false;  // Track hover state
-let hoverZoomAmount = 0;  // Current zoom distance
-let zoomDirection = new THREE.Vector3();  // Direction to zoom toward
+let preFocusPosition = null;
+let isHoverFocused = false;
+let hoverZoomAmount = 0;
+let zoomDirection = new THREE.Vector3();
 
 let hoverInput;
 
@@ -485,8 +522,8 @@ let endFOV2 = 10;
 const animStartTime2 = 85;
 const animEndTime2 = 110;
   
-let fogStartColor = new THREE.Color(config.fog.start.color);
-let fogEndColor = new THREE.Color(config.fog.end.color);
+let fogStartColor = new THREE.Color(0x000000);
+let fogEndColor = new THREE.Color(0x000000);
 
 const textAppearTimes = [
   { time: 26.593, text: "Tvalebs Adevs Nami" },
@@ -962,12 +999,41 @@ function updateLyricText(audioTime) {
   lyricText.value = currentText;
 }
 
+// SIMPLE VERSION CHANGE FUNCTION - ONLY COLORS
 function handleVersionChange(versionNumber) {
   // Set the new version
   versionManager.setVersion(versionNumber);
   
   // Reset focus triggers for new playthrough
   focusManager.resetTriggers();
+  
+  // Get configuration for this version
+  const versionConfig = VERSION_CONFIGS[versionNumber];
+  
+  // 1. UPDATE FOG COLORS
+  // if (scene.fog) {
+  //   scene.fog.color.setHex(versionConfig.fog.startColor);
+  //   fogStartColor.setHex(versionConfig.fog.startColor);
+  //   fogEndColor.setHex(versionConfig.fog.endColor);
+  // }
+  
+  // 2. UPDATE SKY COLORS
+  if (skyPlane && skyPlane.material && skyPlane.material.uniforms) {
+    skyPlane.material.uniforms.cloudColor.value.copy(versionConfig.sky.cloudColor);
+    skyPlane.material.uniforms.skyTopColor.value.copy(versionConfig.sky.skyTopColor);
+    skyPlane.material.uniforms.skyBottomColor.value.copy(versionConfig.sky.skyBottomColor);
+  }
+  
+  // 3. UPDATE STAR NEBULA COLORS
+  if (starNestMaterials && starNestMaterials.size > 0) {
+    starNestMaterials.forEach(material => {
+      if (material.userData && material.userData.uniforms) {
+        material.userData.uniforms.nebulaColor1.value.copy(versionConfig.stars.nebulaColor1);
+        material.userData.uniforms.nebulaColor2.value.copy(versionConfig.stars.nebulaColor2);
+        material.userData.uniforms.nebulaColor3.value.copy(versionConfig.stars.nebulaColor3);
+      }
+    });
+  }
   
   // Reset audio and UI
   AudioController.reset();
@@ -979,7 +1045,7 @@ function handleVersionChange(versionNumber) {
   }
   
   // Start animation from beginning
-  console.log(`Starting version ${versionNumber} with collected VHS: ${JSON.stringify(versionManager.getCollectionStates())}`);
+  console.log(`Starting version ${versionNumber}: ${versionConfig.name}`);
   startAnimation();
 }
 
@@ -1019,7 +1085,11 @@ async function completeSetup() {
     width: 300, height: 300,
     position: new THREE.Vector3(0, 40, -50),
     rotation: new THREE.Euler(Math.PI / 2.1, 0, Math.PI / -2),
-    colors: { cloudColor: '#000000', skyTopColor: '#151761', skyBottomColor: '#000000' }
+    colors: {
+      cloudColor: '#000000',
+      skyTopColor: '#151761', 
+      skyBottomColor: '#000000'
+    }
   });
   scene.add(skyPlane);
 
@@ -1029,7 +1099,7 @@ async function completeSetup() {
   background.position.set(0, 0, -200);
   scene.add(background);
 
-  cursorPlane.init(scene, camera);
+  // cursorPlane.init(scene, camera);
 
   if (cursorPlane.plane) {
     cursorPlane.plane.layers.set(LAYERS.DOFIGNORE);
