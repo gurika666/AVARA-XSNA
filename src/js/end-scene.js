@@ -1,4 +1,4 @@
-// end-scene.js - Responsive Three.js scene with improved VHS collection logic
+// end-scene.js - Responsive Three.js scene with swipe carousel for mobile
 import * as THREE from "three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
@@ -25,12 +25,33 @@ class EndScene {
     this.hoverStates = new Map();
     
     // Responsive settings
-    this.baseSpacing = 7; // Base spacing for desktop
-    this.baseScale = 2; // Base scale for desktop
-    this.baseCameraZ = 12; // Base camera distance for desktop
+    this.baseSpacing = 10; // Base spacing for horizontal layout
+    this.baseScale = 3; // Base scale for objects
+    this.baseCameraZ = 15; // Base camera distance
+    
+    // Layout breakpoint
+    this.verticalBreakpoint = 768; // Switch to carousel below this width
+    
+    // Carousel/swipe properties
+    this.currentIndex = 0;
+    this.targetRotation = 0;
+    this.currentRotation = 0;
+    this.touchStartX = 0;
+    this.touchStartRotation = 0;
+    this.isDragging = false;
+    this.carouselRadius = 8; // Distance of items from center in carousel
+    
+    // Swipe velocity tracking
+    this.lastTouchX = 0;
+    this.lastTouchTime = 0;
+    this.swipeVelocity = 0;
     
     // DEBUG MODE - Set to false for production
     this.debugMode = false;
+  }
+
+  isCarouselLayout() {
+    return window.innerWidth <= this.verticalBreakpoint;
   }
 
   async init() {
@@ -43,10 +64,11 @@ class EndScene {
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 10;
+      z-index: 3;
       pointer-events: none;
       opacity: 1;
       transition: opacity 1s ease-in-out;
+      touch-action: pan-y;
     `;
     document.body.appendChild(this.canvas);
 
@@ -94,34 +116,61 @@ class EndScene {
     this.scene.add(light);
 
     // Add event listeners
-    window.addEventListener('mousemove', (event) => this.onMouseMove(event));
-    window.addEventListener('click', (event) => this.onMouseClick(event));
+    this.setupEventListeners();
+  }
+
+  setupEventListeners() {
+    // Mouse events
+    window.addEventListener('mousemove', (e) => this.onMouseMove(e));
+    window.addEventListener('click', (e) => this.onMouseClick(e));
+    
+    // Touch events for swipe
+    this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
+    this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
+    this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
+    
+    // Mouse drag for desktop testing of swipe
+    this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+    window.addEventListener('mousemove', (e) => this.onMouseDrag(e));
+    window.addEventListener('mouseup', (e) => this.onMouseUp(e));
+    
+    // Resize
     window.addEventListener('resize', () => this.onWindowResize());
   }
 
   getResponsiveFOV() {
     const width = window.innerWidth;
-    // Increase FOV on smaller screens to fit content better
-    if (width < 480) return 90;
-    if (width < 768) return 85;
+    
+    if (this.isCarouselLayout()) {
+      // Narrower FOV for carousel to focus on single item
+      return 60;
+    }
+    
+    // Horizontal layout FOVs
     if (width < 1024) return 80;
     return 75;
   }
 
   getResponsiveScale() {
     const width = window.innerWidth;
-    // Scale down objects on smaller screens
-    if (width < 480) return this.baseScale * 0.5;
-    if (width < 768) return this.baseScale * 0.6;
+    
+    if (this.isCarouselLayout()) {
+      // Larger scale for single focused item
+      const minDimension = Math.min(width, window.innerHeight);
+      if (minDimension < 400) return this.baseScale * 0.6;
+      if (minDimension < 600) return this.baseScale * 0.8;
+      return this.baseScale * 1.0;
+    }
+    
+    // Horizontal layout scaling
     if (width < 1024) return this.baseScale * 0.8;
     return this.baseScale;
   }
 
   getResponsiveSpacing() {
     const width = window.innerWidth;
-    // Adjust spacing based on screen width
-    if (width < 480) return this.baseSpacing * 0.4;
-    if (width < 768) return this.baseSpacing * 0.5;
+    
+    // Only used for horizontal layout
     if (width < 1024) return this.baseSpacing * 0.7;
     if (width < 1440) return this.baseSpacing * 0.85;
     return this.baseSpacing;
@@ -129,19 +178,21 @@ class EndScene {
 
   updateCameraPosition() {
     const width = window.innerWidth;
-    // Move camera closer on smaller screens
-    let cameraZ = this.baseCameraZ;
     
-    if (width < 480) {
-      cameraZ = this.baseCameraZ * 1.5;
-    } else if (width < 768) {
-      cameraZ = this.baseCameraZ * 1.3;
-    } else if (width < 1024) {
-      cameraZ = this.baseCameraZ * 1.1;
+    let cameraZ = this.baseCameraZ;
+    let cameraY = 0;
+    
+    if (this.isCarouselLayout()) {
+      // Camera closer for carousel view
+      cameraZ = this.baseCameraZ * 1.7;
+    } else {
+      // Horizontal layout camera positions
+      if (width < 1024) {
+        cameraZ = this.baseCameraZ * 1.1;
+      }
     }
     
-    this.camera.position.z = cameraZ;
-    this.camera.position.y = 0;
+    this.camera.position.set(0, cameraY, cameraZ);
   }
 
   async loadVHSObjects() {
@@ -241,10 +292,11 @@ class EndScene {
     obj.userData.baseScale = scale;
     obj.userData.vhsNumber = vhsNumber;
     obj.userData.baseRotation = { x: 1.5, y: 0, z: 0 };
+    obj.userData.carouselIndex = null; // Will be set for carousel items
     return obj;
   }
 
-  adjustPositionsForVisible() {
+  getVisibleObjects() {
     const visibleObjects = [];
     
     // VHS 1 is always visible
@@ -264,35 +316,200 @@ class EndScene {
       visibleObjects.push(this.vhsObjects[3]);
     }
     
-    // Get responsive spacing
-    const spacing = this.getResponsiveSpacing();
+    return visibleObjects;
+  }
+
+  adjustPositionsForVisible() {
+    const visibleObjects = this.getVisibleObjects();
     
-    // Calculate positions based on visible count
-    if (visibleObjects.length === 1) {
-      // Center single object
-      visibleObjects[0].position.x = 0;
-    } else if (visibleObjects.length === 2) {
-      // Two objects: balanced spacing
-      visibleObjects[0].position.x = -spacing / 2;
-      visibleObjects[1].position.x = spacing / 2;
-    } else if (visibleObjects.length === 3) {
-      // Three objects: evenly distributed
-      visibleObjects[0].position.x = -spacing;
-      visibleObjects[1].position.x = 0;
-      visibleObjects[2].position.x = spacing;
+    // Check layout type based on window width
+    const useCarouselLayout = this.isCarouselLayout();
+    
+    if (useCarouselLayout) {
+      // CAROUSEL ARRANGEMENT (narrow screens)
+      // Arrange items in a circle around the origin
+      visibleObjects.forEach((obj, index) => {
+        obj.userData.carouselIndex = index;
+        // Items will be positioned dynamically in animate()
+      });
+      
+      // Reset to first item
+      this.currentIndex = 0;
+      this.targetRotation = 0;
+      this.currentRotation = 0;
+      
+    } else {
+      // HORIZONTAL ARRANGEMENT (wide screens)
+      const spacing = this.getResponsiveSpacing();
+      
+      if (visibleObjects.length === 1) {
+        // Center single object
+        visibleObjects[0].position.set(0, 0, 0);
+      } else if (visibleObjects.length === 2) {
+        // Two objects: balanced spacing
+        visibleObjects[0].position.set(-spacing / 2, 0, 0);
+        visibleObjects[1].position.set(spacing / 2, 0, 0);
+      } else if (visibleObjects.length === 3) {
+        // Three objects: evenly distributed
+        visibleObjects[0].position.set(-spacing, 0, 0);
+        visibleObjects[1].position.set(0, 0, 0);
+        visibleObjects[2].position.set(spacing, 0, 0);
+      }
+      
+      // Clear Y and Z for horizontal layout
+      visibleObjects.forEach(obj => {
+        obj.position.y = 0;
+        obj.position.z = 0;
+        obj.userData.carouselIndex = null;
+      });
     }
     
-    // Set Y and Z for all
-    visibleObjects.forEach(obj => {
-      obj.position.y = 0;
-      obj.position.z = 0;
-    });
+    const layoutType = useCarouselLayout ? 'carousel' : 'horizontal';
+    console.log(`End scene showing ${visibleObjects.length} VHS object(s) in ${layoutType} layout`);
+  }
+
+  // Touch/swipe handlers
+  onTouchStart(event) {
+    if (!this.isActive || !this.isCarouselLayout()) return;
     
-    console.log(`End scene showing ${visibleObjects.length} VHS object(s) with spacing: ${spacing}`);
+    event.preventDefault();
+    
+    if (event.touches.length > 0) {
+      this.isDragging = true;
+      this.touchStartX = event.touches[0].clientX;
+      this.touchStartRotation = this.targetRotation;
+      this.lastTouchX = event.touches[0].clientX;
+      this.lastTouchTime = Date.now();
+      this.swipeVelocity = 0;
+    }
+  }
+
+  onTouchMove(event) {
+    if (!this.isDragging || !this.isCarouselLayout()) return;
+    
+    event.preventDefault();
+    
+    if (event.touches.length > 0) {
+      const currentX = event.touches[0].clientX;
+      const deltaX = currentX - this.touchStartX;
+      const rotationSpeed = 0.005;
+      
+      // Calculate velocity
+      const currentTime = Date.now();
+      const deltaTime = currentTime - this.lastTouchTime;
+      if (deltaTime > 0) {
+        this.swipeVelocity = (currentX - this.lastTouchX) / deltaTime;
+      }
+      
+      this.lastTouchX = currentX;
+      this.lastTouchTime = currentTime;
+      
+      // Update rotation based on drag - positive for inverted swipe direction
+      this.targetRotation = this.touchStartRotation + (deltaX * rotationSpeed);
+    }
+  }
+
+  onTouchEnd(event) {
+    if (!this.isDragging || !this.isCarouselLayout()) return;
+    
+    event.preventDefault();
+    
+    this.isDragging = false;
+    
+    const visibleObjects = this.getVisibleObjects();
+    if (visibleObjects.length === 0) return;
+    
+    // Add velocity to final position - positive for inverted
+    const velocityInfluence = this.swipeVelocity * 0.3;
+    this.targetRotation += velocityInfluence;
+    
+    // Snap to nearest item
+    const itemAngle = (Math.PI * 2) / visibleObjects.length;
+    const nearestIndex = Math.round(this.targetRotation / itemAngle);
+    this.targetRotation = nearestIndex * itemAngle;
+    this.currentIndex = ((nearestIndex % visibleObjects.length) + visibleObjects.length) % visibleObjects.length;
+    
+    // Check if tap on current item (no significant movement)
+    const deltaX = Math.abs(this.lastTouchX - this.touchStartX);
+    if (deltaX < 10) {
+      // This is a tap, not a swipe
+      const currentObject = visibleObjects[this.currentIndex];
+      if (currentObject && this.onVersionSelect) {
+        const vhsNumber = currentObject.userData.vhsNumber;
+        console.log(`VHS ${vhsNumber} tapped - selecting version ${vhsNumber}`);
+        this.onVersionSelect(vhsNumber);
+      }
+    }
+  }
+
+  // Mouse drag handlers (for desktop testing)
+  onMouseDown(event) {
+    if (!this.isActive || !this.isCarouselLayout()) return;
+    
+    this.isDragging = true;
+    this.touchStartX = event.clientX;
+    this.touchStartRotation = this.targetRotation;
+    this.lastTouchX = event.clientX;
+    this.lastTouchTime = Date.now();
+    this.swipeVelocity = 0;
+  }
+
+  onMouseDrag(event) {
+    if (!this.isDragging || !this.isCarouselLayout()) return;
+    
+    const currentX = event.clientX;
+    const deltaX = currentX - this.touchStartX;
+    const rotationSpeed = 0.005;
+    
+    // Calculate velocity
+    const currentTime = Date.now();
+    const deltaTime = currentTime - this.lastTouchTime;
+    if (deltaTime > 0) {
+      this.swipeVelocity = (currentX - this.lastTouchX) / deltaTime;
+    }
+    
+    this.lastTouchX = currentX;
+    this.lastTouchTime = currentTime;
+    
+    // Update rotation - positive for inverted swipe
+    this.targetRotation = this.touchStartRotation + (deltaX * rotationSpeed);
+  }
+
+  onMouseUp(event) {
+    if (!this.isDragging || !this.isCarouselLayout()) return;
+    
+    this.isDragging = false;
+    
+    const visibleObjects = this.getVisibleObjects();
+    if (visibleObjects.length === 0) return;
+    
+    // Add velocity to final position - positive for inverted
+    const velocityInfluence = this.swipeVelocity * 0.3;
+    this.targetRotation += velocityInfluence;
+    
+    // Snap to nearest item
+    const itemAngle = (Math.PI * 2) / visibleObjects.length;
+    const nearestIndex = Math.round(this.targetRotation / itemAngle);
+    this.targetRotation = nearestIndex * itemAngle;
+    this.currentIndex = ((nearestIndex % visibleObjects.length) + visibleObjects.length) % visibleObjects.length;
+    
+    // Check for click on current item
+    const deltaX = Math.abs(event.clientX - this.touchStartX);
+    if (deltaX < 10) {
+      const currentObject = visibleObjects[this.currentIndex];
+      if (currentObject && this.onVersionSelect) {
+        const vhsNumber = currentObject.userData.vhsNumber;
+        console.log(`VHS ${vhsNumber} clicked - selecting version ${vhsNumber}`);
+        this.onVersionSelect(vhsNumber);
+      }
+    }
   }
 
   onMouseClick(event) {
-    if (!this.isActive || !this.hoveredObject) return;
+    if (!this.isActive || this.isCarouselLayout()) return;
+    
+    // Only handle clicks in horizontal layout
+    if (!this.hoveredObject) return;
     
     const vhsNumber = this.hoveredObject.userData.vhsNumber;
     if (vhsNumber && this.onVersionSelect) {
@@ -304,6 +521,9 @@ class EndScene {
   onMouseMove(event) {
     if (!this.isActive) return;
 
+    // Only handle hover in horizontal layout
+    if (this.isCarouselLayout()) return;
+
     // Calculate mouse position in normalized device coordinates
     this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -312,9 +532,7 @@ class EndScene {
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
     // Check for intersections with visible VHS objects
-    const visibleObjects = Object.values(this.vhsObjects).filter(obj => 
-      obj && obj.parent === this.vhsGroup
-    );
+    const visibleObjects = this.getVisibleObjects();
     const intersects = this.raycaster.intersectObjects(visibleObjects, true);
 
     // Find the parent VHS object
@@ -495,6 +713,11 @@ class EndScene {
       state.targetRotationZ = 0;
     });
     
+    // Reset carousel
+    this.currentIndex = 0;
+    this.targetRotation = 0;
+    this.currentRotation = 0;
+    
     // Reset object transforms
     Object.values(this.vhsObjects).forEach(obj => {
       if (obj && obj.parent === this.vhsGroup) {
@@ -513,34 +736,88 @@ class EndScene {
 
     const time = Date.now() * 0.001;
     const lerpFactor = 0.1;
+    
+    const isCarousel = this.isCarouselLayout();
+    const visibleObjects = this.getVisibleObjects();
 
-    // Animate each visible VHS object
-    Object.values(this.vhsObjects).forEach((obj, index) => {
-      if (!obj || obj.parent !== this.vhsGroup) return;
-
-      const state = this.hoverStates.get(obj);
-      if (state) {
-        // Smooth transitions for hover effects
-        state.scale += (state.targetScale - state.scale) * lerpFactor;
-        state.rotationX += (state.targetRotationX - state.rotationX) * lerpFactor;
-        state.rotationY += (state.targetRotationY - state.rotationY) * lerpFactor;
-        state.rotationZ += (state.targetRotationZ - state.rotationZ) * lerpFactor;
-
-        // Apply scale
-        const baseScale = obj.userData.baseScale || this.getResponsiveScale();
-        obj.scale.setScalar(baseScale * state.scale);
-
-        // Apply rotation
-        const baseRotation = obj.userData.baseRotation || { x: 1.5, y: 0, z: 0 };
-        const floatOffset = obj.userData.vhsNumber * (Math.PI * 2 / 3);
-        obj.rotation.x = baseRotation.x + state.rotationX;
-        obj.rotation.y = baseRotation.y + state.rotationY;
-        obj.rotation.z = baseRotation.z + state.rotationZ;
-
-        // Floating animation
-        obj.position.y = Math.sin(time * 2 + floatOffset) * 0.1;
+    if (isCarousel && visibleObjects.length > 0) {
+      // CAROUSEL ANIMATION
+      
+      // Smooth rotation interpolation
+      if (!this.isDragging) {
+        this.currentRotation += (this.targetRotation - this.currentRotation) * lerpFactor;
+      } else {
+        this.currentRotation = this.targetRotation;
       }
-    });
+      
+      // Position objects in a circle
+      const itemAngle = (Math.PI * 2) / visibleObjects.length;
+      
+      visibleObjects.forEach((obj, index) => {
+        // Calculate angle based on index and current rotation
+        const angle = this.currentRotation + (index * itemAngle);
+        const x = Math.sin(angle) * this.carouselRadius;
+        const z = Math.cos(angle) * this.carouselRadius - this.carouselRadius;
+        
+        obj.position.set(x, 0, z);
+        
+        // Scale based on distance from front
+        const distanceFromFront = Math.abs(Math.sin(angle));
+        const scale = 1 - (distanceFromFront * 0.3); // Objects at sides are 30% smaller
+        const baseScale = obj.userData.baseScale || this.getResponsiveScale();
+        obj.scale.setScalar(baseScale * scale);
+        
+        // Fade objects that are behind
+        const opacity = Math.cos(angle) > -0.3 ? 1 : 0.3;
+        obj.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.material.opacity = opacity;
+            child.material.transparent = opacity < 1;
+          }
+        });
+        
+        // Apply base rotation only - no additional rotation
+        const baseRotation = obj.userData.baseRotation || { x: 1.5, y: 0, z: 0 };
+        obj.rotation.set(baseRotation.x, baseRotation.y, baseRotation.z);
+      });
+      
+    } else {
+      // HORIZONTAL LAYOUT ANIMATION
+      
+      // Animate each visible VHS object
+      visibleObjects.forEach((obj) => {
+        const state = this.hoverStates.get(obj);
+        if (state) {
+          // Smooth transitions for hover effects
+          state.scale += (state.targetScale - state.scale) * lerpFactor;
+          state.rotationX += (state.targetRotationX - state.rotationX) * lerpFactor;
+          state.rotationY += (state.targetRotationY - state.rotationY) * lerpFactor;
+          state.rotationZ += (state.targetRotationZ - state.rotationZ) * lerpFactor;
+
+          // Apply scale
+          const baseScale = obj.userData.baseScale || this.getResponsiveScale();
+          obj.scale.setScalar(baseScale * state.scale);
+
+          // Apply rotation
+          const baseRotation = obj.userData.baseRotation || { x: 1.5, y: 0, z: 0 };
+          const floatOffset = obj.userData.vhsNumber * (Math.PI * 2 / 3);
+          obj.rotation.x = baseRotation.x + state.rotationX;
+          obj.rotation.y = baseRotation.y + state.rotationY;
+          obj.rotation.z = baseRotation.z + state.rotationZ;
+
+          // Floating animation for horizontal layout
+          obj.position.y = Math.sin(time * 2 + floatOffset) * 0.1;
+          
+          // Reset opacity for horizontal layout
+          obj.traverse((child) => {
+            if (child.isMesh && child.material) {
+              child.material.opacity = 1;
+              child.material.transparent = false;
+            }
+          });
+        }
+      });
+    }
 
     // Render
     if (this.renderer && this.scene && this.camera) {
@@ -572,7 +849,7 @@ class EndScene {
       }
     });
     
-    // Reposition objects with new spacing
+    // Reposition objects with new layout (carousel vs horizontal)
     this.adjustPositionsForVisible();
   }
 
@@ -587,8 +864,14 @@ class EndScene {
     this.hide();
     
     // Remove event listeners
-    window.removeEventListener('mousemove', (event) => this.onMouseMove(event));
-    window.removeEventListener('click', (event) => this.onMouseClick(event));
+    window.removeEventListener('mousemove', (e) => this.onMouseMove(e));
+    window.removeEventListener('click', (e) => this.onMouseClick(e));
+    this.canvas.removeEventListener('touchstart', (e) => this.onTouchStart(e));
+    this.canvas.removeEventListener('touchmove', (e) => this.onTouchMove(e));
+    this.canvas.removeEventListener('touchend', (e) => this.onTouchEnd(e));
+    this.canvas.removeEventListener('mousedown', (e) => this.onMouseDown(e));
+    window.removeEventListener('mousemove', (e) => this.onMouseDrag(e));
+    window.removeEventListener('mouseup', (e) => this.onMouseUp(e));
     window.removeEventListener('resize', () => this.onWindowResize());
     
     if (this.canvas && this.canvas.parentNode) {

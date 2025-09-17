@@ -50,7 +50,7 @@ const VERSION_CONFIGS = {
     
     sky: {
       cloudColor: new THREE.Vector3(0, 0, 0),
-      skyTopColor: new THREE.Vector3(0.082, 0.090, 0.380),
+      skyTopColor: new THREE.Vector3(0.002, 0.090, 0.480),
       skyBottomColor: new THREE.Vector3(0, 0, 0)
     },
     stars: {
@@ -64,14 +64,14 @@ const VERSION_CONFIGS = {
  
     sky: {
       cloudColor: new THREE.Vector3(0, 0, 0),
-      skyTopColor: new THREE.Vector3(0.082, 0.090, 0.380),
+      skyTopColor: new THREE.Vector3(0.150, 0.000, 0.180),
       skyBottomColor: new THREE.Vector3(0, 0, 0)
     },
-    stars: {
-      nebulaColor1: new THREE.Vector3(1.0, 0.4, 0.6),
-      nebulaColor2: new THREE.Vector3(0.9, 0.6, 0.3),
-      nebulaColor3: new THREE.Vector3(0.7, 0.3, 0.9)
-    }
+  stars: {
+  nebulaColor1: new THREE.Vector3(0.8, 0.3, 1.0),  // Violet-magenta
+  nebulaColor2: new THREE.Vector3(0.4, 0.6, 0.9),  // Soft blue
+  nebulaColor3: new THREE.Vector3(1.0, 0.4, 0.8)   // Light magenta
+}
   },
   3: {
     name: 'Magician',
@@ -81,11 +81,11 @@ const VERSION_CONFIGS = {
       skyTopColor: new THREE.Vector3(0.1, 0.0, 0.4),
       skyBottomColor: new THREE.Vector3(0, 0, 0)
     },
-    stars: {
-      nebulaColor1: new THREE.Vector3(1.0, 0.4, 0.6),
-      nebulaColor2: new THREE.Vector3(0.9, 0.6, 0.3),
-      nebulaColor3: new THREE.Vector3(0.7, 0.3, 0.9)
-    }
+   stars: {
+    nebulaColor1: new THREE.Vector3(0.4, 0.4, 1.0),  // Soft blue
+    nebulaColor2: new THREE.Vector3(0.4, 1.0, 0.7),  // Vibrant green
+    nebulaColor3: new THREE.Vector3(0.7, 0.3, 0.9)
+  }
   }
 };
 
@@ -97,9 +97,9 @@ class VersionManager {
   constructor() {
     this.currentVersion = 1;
     this.vhsCollected = {
-      vhs1: false,
-      vhs2: false,
-      vhs3: false
+      vhs1: true,
+      vhs2: true,
+      vhs3: true
     };
   }
   
@@ -1099,7 +1099,7 @@ async function completeSetup() {
   background.position.set(0, 0, -200);
   scene.add(background);
 
-  // cursorPlane.init(scene, camera);
+  cursorPlane.init(scene, camera);
 
   if (cursorPlane.plane) {
     cursorPlane.plane.layers.set(LAYERS.DOFIGNORE);
