@@ -55,32 +55,32 @@ class EndScene {
   }
 
   async init() {
-    // Create a new canvas for the end scene
-    this.canvas = document.createElement('canvas');
-    this.canvas.className = 'end-scene-canvas';
-    this.canvas.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 3;
-      pointer-events: none;
-      opacity: 1;
-      transition: opacity 1s ease-in-out;
-      touch-action: pan-y;
-    `;
-    document.body.appendChild(this.canvas);
+  // Create a new canvas for the end scene
+  this.canvas = document.createElement('canvas');
+  this.canvas.className = 'end-scene-canvas';
+  this.canvas.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 3;
+    pointer-events: none;  /* Canvas doesn't block clicks */
+    opacity: 1;
+    transition: opacity 1s ease-in-out;
+    touch-action: pan-y;
+  `;
+  document.body.appendChild(this.canvas);
 
-    // Setup renderer
-    this.renderer = new THREE.WebGLRenderer({ 
-      canvas: this.canvas, 
-      alpha: true,
-      antialias: true 
-    });
-    this.renderer.setPixelRatio(window.devicePixelRatio);
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setClearColor(0x000000, 0);
+  // Setup renderer with transparent background
+  this.renderer = new THREE.WebGLRenderer({ 
+    canvas: this.canvas, 
+    alpha: true,  /* Enable transparency */
+    antialias: true 
+  });
+  this.renderer.setPixelRatio(window.devicePixelRatio);
+  this.renderer.setSize(window.innerWidth, window.innerHeight);
+  this.renderer.setClearColor(0x000000, 0);  /* Fully transparent background */
 
     // Setup scene
     this.scene = new THREE.Scene();
@@ -577,28 +577,30 @@ class EndScene {
     }
   }
 
-  show() {
-    if (this.isActive) return;
-    
-    this.isActive = true;
-    
-    // Refresh object visibility based on current collection state
-    this.refreshVisibility();
-    
-    // Reset animations
-    this.resetAnimations();
-    
-    // Fade in the canvas
-    setTimeout(() => {
-      if (this.canvas) {
-        this.canvas.style.opacity = '1';
-        this.canvas.style.pointerEvents = 'auto';
-      }
-    }, 100);
+ show() {
+  if (this.isActive) return;
+  
+  this.isActive = true;
+  
+  // Refresh object visibility based on current collection state
+  this.refreshVisibility();
+  
+  // Reset animations
+  this.resetAnimations();
+  
+  // Enable pointer events when showing
+  setTimeout(() => {
+    if (this.canvas) {
+      this.canvas.style.opacity = '1';
+      // Still keep pointer-events as 'none' - we'll handle clicks differently
+      this.canvas.style.pointerEvents = 'none';
+    }
+  }, 100);
 
-    // Start animation
-    this.animate();
-  }
+  // Start animation
+  this.animate();
+}
+
 
   hide() {
     if (!this.isActive) return;

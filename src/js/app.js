@@ -96,11 +96,57 @@ const VERSION_CONFIGS = {
 class VersionManager {
   constructor() {
     this.currentVersion = 1;
-    this.vhsCollected = {
+    // Load VHS collection state from cookies on initialization
+    this.vhsCollected = this.loadFromCookies();
+  }
+  
+  // Load VHS states from cookies
+  loadFromCookies() {
+    // Check if cookies exist
+    const vhs1 = this.getCookie('vhs1');
+    const vhs2 = this.getCookie('vhs2');
+    const vhs3 = this.getCookie('vhs3');
+    
+    // If any cookie exists, load from cookies
+    if (vhs1 !== null || vhs2 !== null || vhs3 !== null) {
+      return {
+        vhs1: vhs1 === '1',
+        vhs2: vhs2 === '1',
+        vhs3: vhs3 === '1'
+      };
+    }
+    
+    // Otherwise return default state
+    return {
       vhs1: false,
       vhs2: false,
       vhs3: false
     };
+  }
+  
+  // Cookie helper methods
+  setCookie(name, value, days = 365) {
+    const expires = new Date();
+    expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+  }
+  
+  getCookie(name) {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for(let i = 0; i < ca.length; i++) {
+      let c = ca[i];
+      while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+      if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+    }
+    return null;
+  }
+  
+  // Save current state to cookies
+  saveToCookies() {
+    this.setCookie('vhs1', this.vhsCollected.vhs1 ? '1' : '0');
+    this.setCookie('vhs2', this.vhsCollected.vhs2 ? '1' : '0');
+    this.setCookie('vhs3', this.vhsCollected.vhs3 ? '1' : '0');
   }
   
   setVersion(versionNumber) {
@@ -118,7 +164,9 @@ class VersionManager {
     const vhsKey = `vhs${vhsNumber}`;
     if (this.vhsCollected.hasOwnProperty(vhsKey)) {
       this.vhsCollected[vhsKey] = true;
-      console.log(`${vhsKey} collected!`);
+      // Save to cookies when VHS is collected
+      this.saveToCookies();
+      console.log(`${vhsKey} collected and saved to cookies!`);
       return true;
     }
     return false;
@@ -147,6 +195,8 @@ class VersionManager {
       vhs2: false,
       vhs3: false
     };
+    // Clear cookies on reset
+    this.saveToCookies();
   }
 }
 
@@ -418,6 +468,10 @@ let lyricText, spot;
 let focus1, focus2, focus3;
 let vhscount;
 let finished;
+let cockiesInput; // Boolean to indicate cookies are present
+let startcookedInput; // Boolean to indicate VHS was selected from end scene
+let resetCookiesInput;
+
 
 let preFocusPosition = null;
 let isHoverFocused = false;
@@ -897,11 +951,73 @@ async function loadRiveOverlay() {
       focus3 = viewmodel.boolean('focus3');
       hoverInput = viewmodel.boolean('hoverfocus');
       vhscount = viewmodel.number('vhscount');
+      cockiesInput = viewmodel.boolean('cockies');
+      startcookedInput = viewmodel.boolean('startcooked');
+      
+      // GET THE RESET COOKIES BOOLEAN
+      resetCookiesInput = viewmodel.boolean('reset_cookies');
+      
+      // CHECK IF RESET COOKIES IS TRUE AT START
+      if (resetCookiesInput && resetCookiesInput.value === true) {
+        console.log('Reset cookies triggered - clearing cookies and refreshing...');
+        
+        // Clear the cookies
+        document.cookie = 'vhs1=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+        document.cookie = 'vhs2=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+        document.cookie = 'vhs3=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+        
+        // Small delay to ensure cookies are cleared
+        setTimeout(() => {
+          window.location.reload();
+        }, 100);
+        
+        return; // Stop execution since we're reloading
+      }
+      
+      // Watch for changes to reset_cookies during runtime
+      if (resetCookiesInput) {
+        // Create a watcher for the reset_cookies boolean
+        const checkResetCookies = setInterval(() => {
+          if (resetCookiesInput.value === true) {
+            console.log('Reset cookies triggered during runtime - clearing cookies and refreshing...');
+            
+            // Clear the cookies
+            document.cookie = 'vhs1=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+            document.cookie = 'vhs2=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+            document.cookie = 'vhs3=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+            
+            clearInterval(checkResetCookies);
+            
+            // Refresh the page
+            setTimeout(() => {
+              window.location.reload();
+            }, 100);
+          }
+        }, 100); // Check every 100ms
+        
+        // Store interval ID to clear it if needed
+        window.resetCookiesInterval = checkResetCookies;
+      }
       
       stoppedInput = inputs.find(i => i.name === 'stopped');
       loadedInput = inputs.find(i => i.name === 'Loaded');
       finished = inputs.find(i => i.name === 'finished');
+      
+      // Set initial VHS count from saved state
+      if (vhscount) {
+        vhscount.value = versionManager.getCollectedCount();
+      }
+      
+      // CHECK IF COOKIES ARE PRESENT AND SET THE FLAG
+      const collectedCount = versionManager.getCollectedCount();
+      if (collectedCount > 0 && cockiesInput) {
+        cockiesInput.value = true;
+        console.log('Cookies detected - setting cockies to true');
+      }
 
+      // Rest of the Rive event handlers...
+      // (Spotify event, Instagram event, Play/pause event, VHS collection events remain the same)
+      
       // Spotify event
       rive.on(EventType.RiveEvent || 'spotifyevent', (event) => {
         if (event.data.name === 'spotify') {
@@ -918,17 +1034,20 @@ async function loadRiveOverlay() {
         }
       });
 
-      // Play/pause event
+      // Play/pause event - only if not starting from end scene
       rive.on(EventType.RiveEvent || 'riveevent', (event) => {
         if (event && event.data && event.data.name === 'click') {
           document.body.classList.add('clicked');
-          if (isSetupComplete) {
+          
+          if (endScene && endScene.isActive) {
+            console.log('Click ignored - in end scene');
+          } else if (isSetupComplete) {
             togglePlayPause();
           }
         }
       });
 
-      // VHS collection events using new focus manager
+      // VHS collection events
       rive.on(EventType.RiveEvent || 'vhs1event', (event) => {
         if (event?.data?.name === 'vhs1') {
           focusManager.collectVHS(1, 
@@ -962,11 +1081,18 @@ async function loadRiveOverlay() {
       if (width) {
         width.value = window.innerWidth; 
       }
-      if (stoppedInput) {
-        stoppedInput.value = isAnimating;
+      
+      // Check if we should start from end scene
+      if (collectedCount > 0) {
+        if (stoppedInput) {
+          stoppedInput.value = false;
+        }
       } else {
-        console.warn('Stopped input not found in Rive state machine');
+        if (stoppedInput) {
+          stoppedInput.value = isAnimating;
+        }
       }
+      
       if (loadedInput) {
         loadedInput.value = false;
       } else {
@@ -975,6 +1101,7 @@ async function loadRiveOverlay() {
     }
   });
 }
+
 
 function updateFocusBooleans(audioTime) {
   focusManager.updateFocus(
@@ -999,7 +1126,6 @@ function updateLyricText(audioTime) {
   lyricText.value = currentText;
 }
 
-// SIMPLE VERSION CHANGE FUNCTION - ONLY COLORS
 function handleVersionChange(versionNumber) {
   // Set the new version
   versionManager.setVersion(versionNumber);
@@ -1010,21 +1136,14 @@ function handleVersionChange(versionNumber) {
   // Get configuration for this version
   const versionConfig = VERSION_CONFIGS[versionNumber];
   
-  // 1. UPDATE FOG COLORS
-  // if (scene.fog) {
-  //   scene.fog.color.setHex(versionConfig.fog.startColor);
-  //   fogStartColor.setHex(versionConfig.fog.startColor);
-  //   fogEndColor.setHex(versionConfig.fog.endColor);
-  // }
-  
-  // 2. UPDATE SKY COLORS
+  // UPDATE SKY COLORS
   if (skyPlane && skyPlane.material && skyPlane.material.uniforms) {
     skyPlane.material.uniforms.cloudColor.value.copy(versionConfig.sky.cloudColor);
     skyPlane.material.uniforms.skyTopColor.value.copy(versionConfig.sky.skyTopColor);
     skyPlane.material.uniforms.skyBottomColor.value.copy(versionConfig.sky.skyBottomColor);
   }
   
-  // 3. UPDATE STAR NEBULA COLORS
+  // UPDATE STAR NEBULA COLORS
   if (starNestMaterials && starNestMaterials.size > 0) {
     starNestMaterials.forEach(material => {
       if (material.userData && material.userData.uniforms) {
@@ -1042,6 +1161,12 @@ function handleVersionChange(versionNumber) {
   // Hide end scene
   if (endScene) {
     endScene.hide();
+  }
+  
+  // SET STARTCOOKED TO TRUE WHEN VHS IS SELECTED
+  if (startcookedInput) {
+    startcookedInput.value = true;
+    console.log('VHS selected from end scene - setting startcooked to true');
   }
   
   // Start animation from beginning
@@ -1117,13 +1242,39 @@ async function completeSetup() {
   );
 
   await endScene.init();
-  endScene.hide();
-
-  if (loadedInput) {
-    loadedInput.value = true;
-  }
-  if(songprogressadd) {
-    songprogressadd.value = 0;
+  
+  // Check if any VHS has been collected
+  const collectedCount = versionManager.getCollectedCount();
+  
+  if (collectedCount > 0) {
+    // User has collected at least one VHS - start from end scene
+    console.log(`User has ${collectedCount} VHS collected - starting from end scene`);
+    
+    // Hide the loading screen
+    if (loadedInput) {
+      loadedInput.value = true;
+    }
+    if (songprogressadd) {
+      songprogressadd.value = 0;
+    }
+    
+    // Show end scene instead of starting animation
+    endScene.show();
+    
+    // Don't start the animation automatically
+    // User will select a version from the end scene
+  } else {
+    // No VHS collected - normal start
+    console.log('No VHS collected - starting normally');
+    
+    endScene.hide();
+    
+    if (loadedInput) {
+      loadedInput.value = true;
+    }
+    if (songprogressadd) {
+      songprogressadd.value = 0;
+    }
   }
 }
 
