@@ -97,9 +97,9 @@ class VersionManager {
   constructor() {
     this.currentVersion = 1;
     this.vhsCollected = {
-      vhs1: true,
-      vhs2: true,
-      vhs3: true
+      vhs1: false,
+      vhs2: false,
+      vhs3: false
     };
   }
   
