@@ -1,4 +1,4 @@
-// end-scene.js - Responsive Three.js scene with swipe carousel for mobile
+// end-scene.js - Responsive Three.js scene with swipe carousel for mobile and cookie reset
 import * as THREE from "three";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
@@ -46,6 +46,9 @@ class EndScene {
     this.lastTouchTime = 0;
     this.swipeVelocity = 0;
     
+    // Cookie reset properties
+    this.cookieResetArea = null;
+    
     // DEBUG MODE - Set to false for production
     this.debugMode = false;
   }
@@ -55,32 +58,32 @@ class EndScene {
   }
 
   async init() {
-  // Create a new canvas for the end scene
-  this.canvas = document.createElement('canvas');
-  this.canvas.className = 'end-scene-canvas';
-  this.canvas.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 3;
-    pointer-events: none;  /* Canvas doesn't block clicks */
-    opacity: 1;
-    transition: opacity 1s ease-in-out;
-    touch-action: pan-y;
-  `;
-  document.body.appendChild(this.canvas);
+    // Create a new canvas for the end scene
+    this.canvas = document.createElement('canvas');
+    this.canvas.className = 'end-scene-canvas';
+    this.canvas.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 3;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 1s ease-in-out;
+      touch-action: pan-y;
+    `;
+    document.body.appendChild(this.canvas);
 
-  // Setup renderer with transparent background
-  this.renderer = new THREE.WebGLRenderer({ 
-    canvas: this.canvas, 
-    alpha: true,  /* Enable transparency */
-    antialias: true 
-  });
-  this.renderer.setPixelRatio(window.devicePixelRatio);
-  this.renderer.setSize(window.innerWidth, window.innerHeight);
-  this.renderer.setClearColor(0x000000, 0);  /* Fully transparent background */
+    // Setup renderer
+    this.renderer = new THREE.WebGLRenderer({ 
+      canvas: this.canvas, 
+      alpha: true,
+      antialias: true 
+    });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setClearColor(0x000000, 0);
 
     // Setup scene
     this.scene = new THREE.Scene();
@@ -368,6 +371,67 @@ class EndScene {
     console.log(`End scene showing ${visibleObjects.length} VHS object(s) in ${layoutType} layout`);
   }
 
+  // Cookie reset methods
+  createCookieResetArea() {
+    // Check if cookies exist
+    const hasCollectedVHS = this.versionManager && 
+      (this.versionManager.getCollectedCount() > 0 || this.debugMode);
+    
+    if (!hasCollectedVHS) return;
+    
+    // Create invisible reset area at bottom
+    this.cookieResetArea = document.createElement('div');
+    this.cookieResetArea.style.cssText = `
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 200px;
+      z-index: 4;
+      cursor: pointer;
+      background: transparent;
+      pointer-events: auto;
+      transition: background-color 0.3s ease;
+    `;
+    
+    // Add hover effect
+    this.cookieResetArea.addEventListener('mouseenter', () => {
+      this.cookieResetArea.style.background = 'rgba(255, 255, 255, 0.02)';
+    });
+    
+    this.cookieResetArea.addEventListener('mouseleave', () => {
+      this.cookieResetArea.style.background = 'transparent';
+    });
+    
+    // Add single-click handler for reset
+    this.cookieResetArea.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.handleCookieReset();
+    });
+    
+    document.body.appendChild(this.cookieResetArea);
+  }
+
+  handleCookieReset() {
+    console.log('Resetting VHS collection...');
+    
+    // Clear cookies immediately
+    if (this.versionManager) {
+      this.versionManager.resetAll();
+    } else {
+      // Fallback if versionManager not available
+      document.cookie = 'vhs1=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+      document.cookie = 'vhs2=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+      document.cookie = 'vhs3=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+    }
+    
+    // Refresh the page
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  }
+
   // Touch/swipe handlers
   onTouchStart(event) {
     if (!this.isActive || !this.isCarouselLayout()) return;
@@ -577,35 +641,42 @@ class EndScene {
     }
   }
 
- show() {
-  if (this.isActive) return;
-  
-  this.isActive = true;
-  
-  // Refresh object visibility based on current collection state
-  this.refreshVisibility();
-  
-  // Reset animations
-  this.resetAnimations();
-  
-  // Enable pointer events when showing
-  setTimeout(() => {
-    if (this.canvas) {
-      this.canvas.style.opacity = '1';
-      // Still keep pointer-events as 'none' - we'll handle clicks differently
-      this.canvas.style.pointerEvents = 'none';
-    }
-  }, 100);
+  show() {
+    if (this.isActive) return;
+    
+    this.isActive = true;
+    
+    // Create cookie reset area when showing end scene
+    this.createCookieResetArea();
+    
+    // Refresh object visibility based on current collection state
+    this.refreshVisibility();
+    
+    // Reset animations
+    this.resetAnimations();
+    
+    // Fade in the canvas
+    setTimeout(() => {
+      if (this.canvas) {
+        this.canvas.style.opacity = '1';
+        this.canvas.style.pointerEvents = 'auto';
+      }
+    }, 100);
 
-  // Start animation
-  this.animate();
-}
-
+    // Start animation
+    this.animate();
+  }
 
   hide() {
     if (!this.isActive) return;
     
     this.isActive = false;
+    
+    // Remove cookie reset area
+    if (this.cookieResetArea && this.cookieResetArea.parentNode) {
+      this.cookieResetArea.parentNode.removeChild(this.cookieResetArea);
+      this.cookieResetArea = null;
+    }
     
     // Fade out the canvas
     if (this.canvas) {
@@ -864,6 +935,12 @@ class EndScene {
 
   dispose() {
     this.hide();
+    
+    // Clean up cookie reset area
+    if (this.cookieResetArea && this.cookieResetArea.parentNode) {
+      this.cookieResetArea.parentNode.removeChild(this.cookieResetArea);
+      this.cookieResetArea = null;
+    }
     
     // Remove event listeners
     window.removeEventListener('mousemove', (e) => this.onMouseMove(e));
