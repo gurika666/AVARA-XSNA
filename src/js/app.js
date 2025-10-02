@@ -1,4 +1,4 @@
-// app.js - Simplified version with minimal color changes
+// app.js - Simplified version with custom HTML controls alongside Rive
 import * as THREE from "three";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -9,7 +9,6 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader';
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
-import EndScene from './end-scene.js';
 
 // Import unified shader manager
 import { 
@@ -29,270 +28,9 @@ import * as LoadingManager from './loading-manager.js';
 import { DepthDrivenBlurPass } from './custom-dof.js';
 
 import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-app/webgl2';
+import SimpleControls from './simple-controls.js';
 
-//COLORS...................
 
-let Pink = new THREE.Color(0xff1a75);
-let darkpink = new THREE.Color(0x99003d);
-let blue =  new THREE.Color(0x0000ff);
-let darkblue = new THREE.Color(0x000099);
-let red = new THREE.Color(0xff0000);
-let darkred = new THREE.Color(0x990000);
-let black = new THREE.Color(0x000000);
-
-// ============================================
-// SIMPLE VERSION CONFIGURATIONS
-// ============================================
-const VERSION_CONFIGS = {
-  1: {
-    name: 'Death',
-  
-    
-    sky: {
-      cloudColor: new THREE.Vector3(0, 0, 0),
-      skyTopColor: new THREE.Vector3(0.002, 0.090, 0.480),
-      skyBottomColor: new THREE.Vector3(0, 0, 0)
-    },
-    stars: {
-      nebulaColor1: new THREE.Vector3(1.0, 0.2, 0.5),
-      nebulaColor2: new THREE.Vector3(0.1, 0.5, 1.0),
-      nebulaColor3: new THREE.Vector3(1.0, 0.6, 0.1)
-    }
-  },
-  2: {
-    name: 'Lovers',
- 
-    sky: {
-      cloudColor: new THREE.Vector3(0, 0, 0),
-      skyTopColor: new THREE.Vector3(0.150, 0.000, 0.180),
-      skyBottomColor: new THREE.Vector3(0, 0, 0)
-    },
-  stars: {
-  nebulaColor1: new THREE.Vector3(0.8, 0.3, 1.0),  // Violet-magenta
-  nebulaColor2: new THREE.Vector3(0.4, 0.6, 0.9),  // Soft blue
-  nebulaColor3: new THREE.Vector3(1.0, 0.4, 0.8)   // Light magenta
-}
-  },
-  3: {
-    name: 'Magician',
-   
-    sky: {
-      cloudColor: new THREE.Vector3(0, 0, 0),
-      skyTopColor: new THREE.Vector3(0.1, 0.0, 0.4),
-      skyBottomColor: new THREE.Vector3(0, 0, 0)
-    },
-   stars: {
-    nebulaColor1: new THREE.Vector3(0.4, 0.4, 1.0),  // Soft blue
-    nebulaColor2: new THREE.Vector3(0.4, 1.0, 0.7),  // Vibrant green
-    nebulaColor3: new THREE.Vector3(0.7, 0.3, 0.9)
-  }
-  }
-};
-
-// ============================================
-// VERSION & VHS COLLECTION SYSTEM
-// ============================================
-
-class VersionManager {
-  constructor() {
-    this.currentVersion = 1;
-    // Load VHS collection state from cookies on initialization
-    this.vhsCollected = this.loadFromCookies();
-  }
-  
-  // Load VHS states from cookies
-  loadFromCookies() {
-    // Check if cookies exist
-    const vhs1 = this.getCookie('vhs1');
-    const vhs2 = this.getCookie('vhs2');
-    const vhs3 = this.getCookie('vhs3');
-    
-    // If any cookie exists, load from cookies
-    if (vhs1 !== null || vhs2 !== null || vhs3 !== null) {
-      return {
-        vhs1: vhs1 === '1',
-        vhs2: vhs2 === '1',
-        vhs3: vhs3 === '1'
-      };
-    }
-    
-    // Otherwise return default state
-    return {
-      vhs1: false,
-      vhs2: false,
-      vhs3: false
-    };
-  }
-  
-  // Cookie helper methods
-  setCookie(name, value, days = 365) {
-    const expires = new Date();
-    expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
-    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
-  }
-  
-  getCookie(name) {
-    const nameEQ = name + "=";
-    const ca = document.cookie.split(';');
-    for(let i = 0; i < ca.length; i++) {
-      let c = ca[i];
-      while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-      if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
-    }
-    return null;
-  }
-  
-  // Save current state to cookies
-  saveToCookies() {
-    this.setCookie('vhs1', this.vhsCollected.vhs1 ? '1' : '0');
-    this.setCookie('vhs2', this.vhsCollected.vhs2 ? '1' : '0');
-    this.setCookie('vhs3', this.vhsCollected.vhs3 ? '1' : '0');
-  }
-  
-  setVersion(versionNumber) {
-    if (versionNumber < 1 || versionNumber > 3) return false;
-    this.currentVersion = versionNumber;
-    console.log(`Version set to: ${versionNumber} (${VERSION_CONFIGS[versionNumber].name})`);
-    return true;
-  }
-  
-  getCurrentVersion() {
-    return this.currentVersion;
-  }
-  
-  collectVHS(vhsNumber) {
-    const vhsKey = `vhs${vhsNumber}`;
-    if (this.vhsCollected.hasOwnProperty(vhsKey)) {
-      this.vhsCollected[vhsKey] = true;
-      // Save to cookies when VHS is collected
-      this.saveToCookies();
-      console.log(`${vhsKey} collected and saved to cookies!`);
-      return true;
-    }
-    return false;
-  }
-  
-  isVHSCollected(vhsNumber) {
-    return this.vhsCollected[`vhs${vhsNumber}`] || false;
-  }
-  
-  getCollectionStates() {
-    return { ...this.vhsCollected };
-  }
-  
-  getCollectedCount() {
-    return Object.values(this.vhsCollected).filter(v => v).length;
-  }
-  
-  shouldTriggerFocus(vhsNumber) {
-    return !this.isVHSCollected(vhsNumber);
-  }
-  
-  resetAll() {
-    this.currentVersion = 1;
-    this.vhsCollected = {
-      vhs1: false,
-      vhs2: false,
-      vhs3: false
-    };
-    // Clear cookies on reset
-    this.saveToCookies();
-  }
-}
-
-class FocusManager {
-  constructor(versionManager) {
-    this.versionManager = versionManager;
-    this.focusTriggered = {};
-    this.focusTimers = {};
-    this.FOCUS_TIMEOUT = 10;
-    
-    this.focusTimes = {
-      1: 2,
-      2: 20,
-      3: 30
-    };
-  }
-  
-  resetTriggers() {
-    this.focusTriggered = {
-      1: false,
-      2: false,
-      3: false
-    };
-    this.clearAllTimers();
-  }
-  
-  updateFocus(audioTime, focusInputs, hoverInput) {
-    for (let i = 1; i <= 3; i++) {
-      if (this.versionManager.isVHSCollected(i) || this.focusTriggered[i]) {
-        continue;
-      }
-      
-      if (audioTime >= this.focusTimes[i]) {
-        this.triggerFocus(i, focusInputs, hoverInput);
-        this.focusTriggered[i] = true;
-      }
-    }
-  }
-  
-  triggerFocus(focusNumber, focusInputs, hoverInput) {
-    console.log(`Triggering focus ${focusNumber}`);
-    
-    for (let i = 1; i <= 3; i++) {
-      if (focusInputs[i]) {
-        focusInputs[i].value = false;
-      }
-    }
-    
-    this.clearAllTimers();
-    
-    if (focusInputs[focusNumber]) {
-      focusInputs[focusNumber].value = true;
-      
-      this.focusTimers[focusNumber] = setTimeout(() => {
-        if (focusInputs[focusNumber]) {
-          focusInputs[focusNumber].value = false;
-        }
-        if (hoverInput) {
-          hoverInput.value = false;
-        }
-        console.log(`Focus ${focusNumber} timed out after ${this.FOCUS_TIMEOUT} seconds`);
-      }, this.FOCUS_TIMEOUT * 1000);
-    }
-  }
-  
-  collectVHS(vhsNumber, focusInputs, hoverInput, vhsCountInput) {
-    for (let i = 1; i <= 3; i++) {
-      if (focusInputs[i]) {
-        focusInputs[i].value = false;
-      }
-    }
-    
-    if (hoverInput) {
-      hoverInput.value = false;
-    }
-    
-    this.clearAllTimers();
-    
-    this.versionManager.collectVHS(vhsNumber);
-    
-    if (vhsCountInput) {
-      vhsCountInput.value = this.versionManager.getCollectedCount();
-    }
-    
-    console.log(`VHS ${vhsNumber} collected! Total: ${this.versionManager.getCollectedCount()}/3`);
-  }
-  
-  clearAllTimers() {
-    Object.values(this.focusTimers).forEach(timer => clearTimeout(timer));
-    this.focusTimers = {};
-  }
-}
-
-// Initialize version and focus managers
-const versionManager = new VersionManager();
-const focusManager = new FocusManager(versionManager);
 
 // State Machine Class
 class AnimationStateMachine {
@@ -450,37 +188,18 @@ window.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini
 // Initialize state machine
 const stateMachine = new AnimationStateMachine();
 
-let endScene = null;
+let simpleControls;
 let depthBlurPass;
-let riveOverlay;
 let rive;
 let width;
 let stoppedInput;
 let loadedInput;
 let loadingProgress; 
+let playingInput; // Add playing boolean from Rive
 let currentProgress = 0;
-let progressInterval = null; 
-let songprogressadd;
-let scrub;
-let isScrubbing = false;
-let isSeekingAudio = false;
-let lyricText, spot;
-let focus1, focus2, focus3;
-let vhscount;
-let finished;
-let cockiesInput; // Boolean to indicate cookies are present
-let startcookedInput; // Boolean to indicate VHS was selected from end scene
-let resetCookiesInput;
-
-
-let preFocusPosition = null;
-let isHoverFocused = false;
-let hoverZoomAmount = 0;
-let zoomDirection = new THREE.Vector3();
-
-let hoverInput;
-
+let progressInterval = null;
 let starNestMaterials = new Map();
+let lyrics;
 
 // Globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass;
@@ -489,8 +208,6 @@ let skyPlane, gltfMixer, gltfModel, gltfAnimationActions = [];
 let spotlight, raycaster = new THREE.Raycaster(), mouseNDC = new THREE.Vector2();
 let mouseX = 0, mouseY = 0, font;
 let cursorPlane = new CursorPlane();
-let titleMixer;
-let textmaterial;
 const canvas = document.querySelector('.main-animation');
 const rivecanvas = document.querySelector('.rive');
 
@@ -543,6 +260,18 @@ const config = {
     scale: new THREE.Vector3(1, 1, 1),
     rotation: new THREE.Euler(0, 0, 0),
     autoplay: true
+  },
+  // Default sky colors
+  sky: {
+    cloudColor: new THREE.Vector3(0, 0, 0),
+    skyTopColor: new THREE.Vector3(0.002, 0.090, 0.480),
+    skyBottomColor: new THREE.Vector3(0, 0, 0)
+  },
+  // Default star colors
+  stars: {
+    nebulaColor1: new THREE.Vector3(1.0, 0.2, 0.5),
+    nebulaColor2: new THREE.Vector3(0.1, 0.5, 1.0),
+    nebulaColor3: new THREE.Vector3(1.0, 0.6, 0.1)
   }
 };
 
@@ -579,14 +308,6 @@ const animEndTime2 = 110;
 let fogStartColor = new THREE.Color(0x000000);
 let fogEndColor = new THREE.Color(0x000000);
 
-const textAppearTimes = [
-  { time: 26.593, text: "Tvalebs Adevs Nami" },
-  { time: 29.777, text: "Zgvaa Dzaan Wynari" },
-  { time: 32.890, text: "Caze Fantavs Elvebs" },
-  { time: 35, text: "Dauokebeli Brazi" },
-  { time: 37.8, text: "Axals Arafers Ar Getyvi" },
-];
-
 // Resources to be loaded
 const resources = {
   hdri: null,
@@ -596,6 +317,32 @@ const resources = {
   audio: null,
   vegetation: null
 };
+
+const lyricsData = [
+  { time: 0, text: "hello world" }, // Start with empty
+  { time: 2.5, text: "First line of lyrics here" },
+  { time: 5.0, text: "Second line goes here" },
+  { time: 8.2, text: "Another line of text" },
+  { time: 12.0, text: "Next phrase or line" },
+  { time: 15.5, text: "" }, // Clear between verses
+  { time: 18.0, text: "New verse starts here" },
+  { time: 22.0, text: "Continue with more lines" },
+  { time: 26.5, text: "Add as many as needed" },
+  { time: 30.0, text: "" }, // Clear again
+  // Continue adding timing points...
+  { time: 60.0, text: "Lyrics at 1 minute mark" },
+  { time: 65.0, text: "More lyrics here" },
+  { time: 70.0, text: "" },
+  { time: 75.0, text: "Another section" },
+  { time: 80.0, text: "Keep going" },
+  { time: 85.0, text: "Final section starts" },
+  { time: 90.0, text: "Almost done" },
+  { time: 95.0, text: "Last line" },
+  { time: 100.0, text: "" }, // Clear at end
+];
+
+let currentLyricIndex = -1;
+let glitch, finishedInput;
 
 async function init() {
   loadRiveOverlay();
@@ -616,6 +363,16 @@ async function init() {
   
   // Initialize controllers
   AudioController.init({});
+  
+  // Initialize simple custom controls
+  simpleControls = new SimpleControls();
+  simpleControls.init(
+    () => togglePlayPause(), // Play/pause callback
+    (seekTime) => {          // Seek callback
+      AudioController.seekTo(seekTime);
+    }
+  );
+  simpleControls.hide(); // Hide until loaded
   
   // Setup event listeners
   setupEventListeners();
@@ -665,6 +422,135 @@ function setupEventListeners() {
       depthBlurPass.setMaxBlurSize(blurAmount);
     }
   });
+}
+
+async function loadRiveOverlay() {
+  rive = new Rive({
+    src: 'animations/xsna.riv',
+    canvas: rivecanvas,
+    autoplay: true,
+    autoBind: true,
+    stateMachines: 'State Machine 1',
+    layout: new Layout({
+      fit: Fit.Layout,
+    }),
+    onLoad: () => {
+      rive.resizeDrawingSurfaceToCanvas();
+      const inputs = rive.stateMachineInputs('State Machine 1');
+
+      const viewmodel = rive.viewModelInstance;
+      loadingProgress = viewmodel.number('loadprogress');
+      width = viewmodel.number('width');
+      playingInput = viewmodel.boolean('playing');
+      lyrics = viewmodel.string('lyrics');
+      glitch = viewmodel.boolean('glitch');
+      finishedInput = viewmodel.boolean('finished');
+      
+      stoppedInput = inputs.find(i => i.name === 'stopped');
+      loadedInput = inputs.find(i => i.name === 'Loaded');
+      
+      
+      // Watch for playing state changes from Rive
+      if (playingInput) {
+        // Poll for changes (Rive doesn't have native change listeners)
+        setInterval(() => {
+          if (playingInput.value && !isAnimating && isSetupComplete) {
+            // Rive wants to play - reset finished state and start
+            if (finishedInput) {
+              finishedInput.value = false;
+            }
+            startAnimation();
+            // Show controls when playing starts
+            if (simpleControls) {
+              setInterval(() => {
+              simpleControls.show();
+              }, 2150);
+            }
+          } else if (!playingInput.value && isAnimating) {
+            // Rive says stop, but we're playing
+            // Don't change finished state here - let pause/finish handlers set it
+            pauseAnimation();
+          }
+        }, 100);
+      }
+      
+      // Spotify event
+      rive.on(EventType.RiveEvent || 'spotifyevent', (event) => {
+        if (event.data.name === 'spotify') {
+          console.log('Spotify event received');
+          window.location.assign('https://open.spotify.com/artist/5UZEQzbK7ktedLBHvZ2wkJ?si=heZI_ZZFRO6ms4xBZURn7A', '_blank');
+        }
+      });
+
+      // Instagram event
+      rive.on(EventType.RiveEvent || 'instaevent', (event) => {
+        if (event.data.name === 'instagram') {
+          console.log('Instagram event received');
+          window.location.assign('https://www.instagram.com/avara.band?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==', '_top');
+        }
+      });
+
+      if (width) {
+        width.value = window.innerWidth; 
+      }
+      
+      if (stoppedInput) {
+        stoppedInput.value = !isAnimating;
+      }
+      
+      if (loadedInput) {
+        loadedInput.value = false;
+      } else {
+        console.warn('Loaded input not found in Rive state machine');
+      }
+    }
+  });
+}
+
+
+function updateGlitch(audioTime) {
+  if (!glitch) return;
+  
+  // Every 15 seconds, turn on for 4 seconds
+  const cycleTime = audioTime % 15; // Get position within 15-second cycle
+  
+  // Glitch is ON between 0-4 seconds of each cycle
+  glitch.value = (cycleTime >= 0 && cycleTime < 4);
+}
+
+
+function updateLyrics(audioTime) {
+  if (!lyrics || !lyricsData.length) return;
+  
+  // Find the appropriate lyric index for current time
+  let targetIndex = -1;
+  for (let i = lyricsData.length - 1; i >= 0; i--) {
+    if (audioTime >= lyricsData[i].time) {
+      targetIndex = i;
+      break;
+    }
+  }
+  
+  // Only update if we've moved to a new lyric
+  if (targetIndex !== currentLyricIndex) {
+    currentLyricIndex = targetIndex;
+    
+    if (targetIndex >= 0) {
+      lyrics.value = lyricsData[targetIndex].text;
+      // Optional: log for debugging
+      // console.log(`Lyrics updated at ${audioTime.toFixed(1)}s: "${lyricsData[targetIndex].text}"`);
+    } else {
+      lyrics.value = "";
+    }
+  }
+}
+
+
+function resetLyrics() {
+  currentLyricIndex = -1;
+  if (lyrics) {
+    lyrics.value = "";
+  }
 }
 
 function animateProgressTo(targetValue) {
@@ -795,12 +681,8 @@ async function loadHDRTexture(path, key, manager) {
       texture => {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         resources[key] = texture;
-        textmaterial = new THREE.MeshPhysicalMaterial({
-          envMap: resources.hdri,
-          envMapIntensity: 0.6,
-          metalness: 1,
-          roughness: 0,
-        });
+    
+     
         resolve();
       },
       undefined,
@@ -925,255 +807,6 @@ async function initVegetation(manager) {
   });
 }
 
-async function loadRiveOverlay() {
-  rive = new Rive({
-    src: 'animations/xsna.riv',
-    canvas: rivecanvas,
-    autoplay: true,
-    autoBind: true,
-    stateMachines: 'State Machine 1',
-    layout: new Layout({
-      fit: Fit.Layout,
-    }),
-    onLoad: () => {
-      rive.resizeDrawingSurfaceToCanvas();
-      const inputs = rive.stateMachineInputs('State Machine 1');
-      const gl = rivecanvas.getContext('webgl2') || rivecanvas.getContext('webgl');
-
-      const viewmodel = rive.viewModelInstance;
-      loadingProgress = viewmodel.number('loadprogress');
-      width = viewmodel.number('width');
-      songprogressadd = viewmodel.number('progressnum');
-      scrub = viewmodel.boolean('scrub');
-      lyricText = viewmodel.string('lyrics');
-      focus1 = viewmodel.boolean('focus1');
-      focus2 = viewmodel.boolean('focus2');
-      focus3 = viewmodel.boolean('focus3');
-      hoverInput = viewmodel.boolean('hoverfocus');
-      vhscount = viewmodel.number('vhscount');
-      cockiesInput = viewmodel.boolean('cockies');
-      startcookedInput = viewmodel.boolean('startcooked');
-      
-      // GET THE RESET COOKIES BOOLEAN
-      resetCookiesInput = viewmodel.boolean('reset_cookies');
-      
-      // CHECK IF RESET COOKIES IS TRUE AT START
-      if (resetCookiesInput && resetCookiesInput.value === true) {
-        console.log('Reset cookies triggered - clearing cookies and refreshing...');
-        
-        // Clear the cookies
-        document.cookie = 'vhs1=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
-        document.cookie = 'vhs2=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
-        document.cookie = 'vhs3=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
-        
-        // Small delay to ensure cookies are cleared
-        setTimeout(() => {
-          window.location.reload();
-        }, 100);
-        
-        return; // Stop execution since we're reloading
-      }
-      
-      // Watch for changes to reset_cookies during runtime
-      if (resetCookiesInput) {
-        // Create a watcher for the reset_cookies boolean
-        const checkResetCookies = setInterval(() => {
-          if (resetCookiesInput.value === true) {
-            console.log('Reset cookies triggered during runtime - clearing cookies and refreshing...');
-            
-            // Clear the cookies
-            document.cookie = 'vhs1=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
-            document.cookie = 'vhs2=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
-            document.cookie = 'vhs3=0;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
-            
-            clearInterval(checkResetCookies);
-            
-            // Refresh the page
-            setTimeout(() => {
-              window.location.reload();
-            }, 100);
-          }
-        }, 100); // Check every 100ms
-        
-        // Store interval ID to clear it if needed
-        window.resetCookiesInterval = checkResetCookies;
-      }
-      
-      stoppedInput = inputs.find(i => i.name === 'stopped');
-      loadedInput = inputs.find(i => i.name === 'Loaded');
-      finished = inputs.find(i => i.name === 'finished');
-      
-      // Set initial VHS count from saved state
-      if (vhscount) {
-        vhscount.value = versionManager.getCollectedCount();
-      }
-      
-      // CHECK IF COOKIES ARE PRESENT AND SET THE FLAG
-      const collectedCount = versionManager.getCollectedCount();
-      if (collectedCount > 0 && cockiesInput) {
-        cockiesInput.value = true;
-        console.log('Cookies detected - setting cockies to true');
-      }
-
-      // Rest of the Rive event handlers...
-      // (Spotify event, Instagram event, Play/pause event, VHS collection events remain the same)
-      
-      // Spotify event
-      rive.on(EventType.RiveEvent || 'spotifyevent', (event) => {
-        if (event.data.name === 'spotify') {
-          console.log('Spotify event received');
-          window.location.assign('https://open.spotify.com/artist/5UZEQzbK7ktedLBHvZ2wkJ?si=heZI_ZZFRO6ms4xBZURn7A', '_blank');
-        }
-      });
-
-      // Instagram event
-      rive.on(EventType.RiveEvent || 'instaevent', (event) => {
-        if (event.data.name === 'instagram') {
-          console.log('Instagram event received');
-          window.location.assign('https://www.instagram.com/avara.band?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==', '_top');
-        }
-      });
-
-      // Play/pause event - only if not starting from end scene
-      rive.on(EventType.RiveEvent || 'riveevent', (event) => {
-        if (event && event.data && event.data.name === 'click') {
-          document.body.classList.add('clicked');
-          
-          if (endScene && endScene.isActive) {
-            console.log('Click ignored - in end scene');
-          } else if (isSetupComplete) {
-            togglePlayPause();
-          }
-        }
-      });
-
-      // VHS collection events
-      rive.on(EventType.RiveEvent || 'vhs1event', (event) => {
-        if (event?.data?.name === 'vhs1') {
-          focusManager.collectVHS(1, 
-            { 1: focus1, 2: focus2, 3: focus3 }, 
-            hoverInput, 
-            vhscount
-          );
-        }
-      });
-
-      rive.on(EventType.RiveEvent || 'vhs2event', (event) => {
-        if (event?.data?.name === 'vhs2') {
-          focusManager.collectVHS(2, 
-            { 1: focus1, 2: focus2, 3: focus3 }, 
-            hoverInput, 
-            vhscount
-          );
-        }
-      });
-
-      rive.on(EventType.RiveEvent || 'vhs3event', (event) => {
-        if (event?.data?.name === 'vhs3') {
-          focusManager.collectVHS(3, 
-            { 1: focus1, 2: focus2, 3: focus3 }, 
-            hoverInput, 
-            vhscount
-          );
-        }
-      });
-
-      if (width) {
-        width.value = window.innerWidth; 
-      }
-      
-      // Check if we should start from end scene
-      if (collectedCount > 0) {
-        if (stoppedInput) {
-          stoppedInput.value = false;
-        }
-      } else {
-        if (stoppedInput) {
-          stoppedInput.value = isAnimating;
-        }
-      }
-      
-      if (loadedInput) {
-        loadedInput.value = false;
-      } else {
-        console.warn('Loaded input not found in Rive state machine');
-      }
-    }
-  });
-}
-
-
-function updateFocusBooleans(audioTime) {
-  focusManager.updateFocus(
-    audioTime,
-    { 1: focus1, 2: focus2, 3: focus3 },
-    hoverInput
-  );
-}
-
-function updateLyricText(audioTime) {
-  if (!lyricText) return;
-  
-  let currentText = "";
-  
-  for (let i = textAppearTimes.length - 1; i >= 0; i--) {
-    if (audioTime >= textAppearTimes[i].time) {
-      currentText = textAppearTimes[i].text;
-      break;
-    }
-  }
-  
-  lyricText.value = currentText;
-}
-
-function handleVersionChange(versionNumber) {
-  // Set the new version
-  versionManager.setVersion(versionNumber);
-  
-  // Reset focus triggers for new playthrough
-  focusManager.resetTriggers();
-  
-  // Get configuration for this version
-  const versionConfig = VERSION_CONFIGS[versionNumber];
-  
-  // UPDATE SKY COLORS
-  if (skyPlane && skyPlane.material && skyPlane.material.uniforms) {
-    skyPlane.material.uniforms.cloudColor.value.copy(versionConfig.sky.cloudColor);
-    skyPlane.material.uniforms.skyTopColor.value.copy(versionConfig.sky.skyTopColor);
-    skyPlane.material.uniforms.skyBottomColor.value.copy(versionConfig.sky.skyBottomColor);
-  }
-  
-  // UPDATE STAR NEBULA COLORS
-  if (starNestMaterials && starNestMaterials.size > 0) {
-    starNestMaterials.forEach(material => {
-      if (material.userData && material.userData.uniforms) {
-        material.userData.uniforms.nebulaColor1.value.copy(versionConfig.stars.nebulaColor1);
-        material.userData.uniforms.nebulaColor2.value.copy(versionConfig.stars.nebulaColor2);
-        material.userData.uniforms.nebulaColor3.value.copy(versionConfig.stars.nebulaColor3);
-      }
-    });
-  }
-  
-  // Reset audio and UI
-  AudioController.reset();
-  if (finished) finished.value = false;
-  
-  // Hide end scene
-  if (endScene) {
-    endScene.hide();
-  }
-  
-  // SET STARTCOOKED TO TRUE WHEN VHS IS SELECTED
-  if (startcookedInput) {
-    startcookedInput.value = true;
-    console.log('VHS selected from end scene - setting startcooked to true');
-  }
-  
-  // Start animation from beginning
-  console.log(`Starting version ${versionNumber}: ${versionConfig.name}`);
-  startAnimation();
-}
-
 function togglePlayPause() {
   if (!isSetupComplete) {
     return;
@@ -1184,6 +817,16 @@ function togglePlayPause() {
   } else {
     startAnimation();
   }
+  
+  // Update Rive playing boolean to match
+  if (playingInput) {
+    playingInput.value = isAnimating;
+  }
+  
+  // Show controls when playing starts
+  if (isAnimating && simpleControls) {
+    simpleControls.show();
+  }
 }
 
 async function completeSetup() {
@@ -1191,7 +834,7 @@ async function completeSetup() {
   
   await new Promise(resolve => setTimeout(resolve, 1000));
 
-  console.log('Starting with version 1 (default scene)');
+  console.log('Starting scene');
 
   camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 2, 0);
@@ -1206,6 +849,7 @@ async function completeSetup() {
   setupPostProcessing();
   setupLights();
   
+  // Use default sky colors
   skyPlane = createSkyPlane({
     width: 300, height: 300,
     position: new THREE.Vector3(0, 40, -50),
@@ -1234,48 +878,13 @@ async function completeSetup() {
   
   isSetupComplete = true;
 
-  // Initialize end scene with version manager
-  endScene = new EndScene(
-    resources.txthdr, 
-    handleVersionChange,
-    versionManager
-  );
-
-  await endScene.init();
-  
-  // Check if any VHS has been collected
-  const collectedCount = versionManager.getCollectedCount();
-  
-  if (collectedCount > 0) {
-    // User has collected at least one VHS - start from end scene
-    console.log(`User has ${collectedCount} VHS collected - starting from end scene`);
-    
-    // Hide the loading screen
-    if (loadedInput) {
-      loadedInput.value = true;
-    }
-    if (songprogressadd) {
-      songprogressadd.value = 0;
-    }
-    
-    // Show end scene instead of starting animation
-    endScene.show();
-    
-    // Don't start the animation automatically
-    // User will select a version from the end scene
-  } else {
-    // No VHS collected - normal start
-    console.log('No VHS collected - starting normally');
-    
-    endScene.hide();
-    
-    if (loadedInput) {
-      loadedInput.value = true;
-    }
-    if (songprogressadd) {
-      songprogressadd.value = 0;
-    }
+  // Hide the loading screen in Rive
+  if (loadedInput) {
+    loadedInput.value = true;
   }
+  
+  // Don't show controls yet - wait for playing to be true
+  // Controls will be shown when playing boolean becomes true in Rive
 }
 
 function setupHeadTracking() {
@@ -1568,6 +1177,13 @@ function animate(time) {
   
   const audioTime = AudioController.getCurrentTime();
   
+
+  updateLyrics(audioTime);
+
+
+  updateGlitch(audioTime);
+
+
   // Update state machine
   stateMachine.update(audioTime);
   
@@ -1672,103 +1288,50 @@ function animate(time) {
   
   camera.position.copy(baseCameraPos);
   
-  // Audio progress
-  let audioDuration = animationCache.lastAudioDuration;
-  if (songprogressadd && Math.abs(audioDuration - AudioController.getAudioDuration()) > 0.01) {
-    audioDuration = AudioController.getAudioDuration();
-    animationCache.lastAudioDuration = audioDuration;
-  }
-  
-  if (songprogressadd && scrub && audioDuration > 0) {
-    if (scrub.value && !isScrubbing) {
-      isScrubbing = true;
-    } else if (!scrub.value && isScrubbing) {
-      isScrubbing = false;
-      const targetValue = songprogressadd.value;
-      isSeekingAudio = true;
-      
-      const seekTime = (targetValue / 100) * audioDuration;
-      AudioController.seekTo(seekTime);
-      
-      setTimeout(() => { isSeekingAudio = false; }, 50);
-    }
-    
-    if (!isScrubbing && !isSeekingAudio) {
-      const progress = (audioTime / audioDuration) * 100;
-      songprogressadd.value = progress;
-    }
-  }
-
-  // Handle hover cursor zoom
-  if (hoverInput && hoverInput.value) {
-    // Store the position when first starting hover
-    if (!isHoverFocused) {
-      preFocusPosition = camera.position.clone();
-      isHoverFocused = true;
-      hoverZoomAmount = 0;
-      
-      // Calculate zoom direction from camera toward cursor position in 3D space
-      mouseNDC.set(
-        (mouseX / window.innerWidth) * 2,
-        -(mouseY / window.innerHeight) * 2
-      );
-      raycaster.setFromCamera(mouseNDC, camera);
-      
-      // Get a point along the ray as zoom target
-      raycaster.ray.at(50, zoomDirection);
-      zoomDirection.sub(camera.position).normalize();
-    }
-    
-    // Continuously zoom toward cursor position
-    hoverZoomAmount += 0.5;  // Adjust this value to control zoom speed
-    
-    // Move camera along the zoom direction
-    camera.position.copy(preFocusPosition);
-    camera.position.addScaledVector(zoomDirection, hoverZoomAmount);
-    
-  } else if (isHoverFocused) {
-    // Snap back to stored position when hover ends
-    camera.position.copy(preFocusPosition);
-    isHoverFocused = false;
-    hoverZoomAmount = 0;
-    preFocusPosition = null;
-  }
-
-  if (finished && audioDuration > 0) {
+  // Check if song finished
+  const audioDuration = AudioController.getAudioDuration();
+  if (audioDuration > 0) {
     const isFinished = audioTime >= audioDuration - 0.1;
     
-    if (isFinished && !finished.value) {
+    if (isFinished && isAnimating) {
       // Song just finished
-      finished.value = true;
-      isAnimating = false;  // Stop the animation loop
+      isAnimating = false;
 
-      if (endScene) {
-        endScene.show();
+      // Set finished to true
+      if (finishedInput) {
+        finishedInput.value = true;
+      }
+      
+      // Set playing to false immediately when song finishes
+      if (playingInput) {
+        playingInput.value = false;
       }
 
+      resetLyrics();
+      resetGlitch();
+      
+      // Stop the animation loop
       if (animationId) {
         cancelAnimationFrame(animationId);
         animationId = null;
       }
-      // Don't call pauseAnimation() - just stop the loop
-      return;
-    } else if (!isFinished && finished.value) {
-      // Song was finished but now we're not at the end (user seeked back)
-      finished.value = false;
-
-      if (endScene) {
-        endScene.hide();
+      
+      // Reset to beginning for next play
+      AudioController.reset();
+      
+      // Update stopped state in Rive
+      if (stoppedInput) {
+        stoppedInput.value = true;
       }
+      
+      // Update controls
+      if (simpleControls) {
+        simpleControls.updatePlayButton(false);
+      }
+      
+      return;
     }
   }
-
-  // If finished is true, don't continue animating
-  if (finished && finished.value) {
-    return;
-  }
-
-  updateLyricText(audioTime);
-  updateFocusBooleans(audioTime);
 
   // Render
   if (scene && camera) composer.render();
@@ -1779,9 +1342,6 @@ function startAnimation() {
     return;
   }
   
-  // Reset focus triggers for this playthrough
-  focusManager.resetTriggers();
-  
   // Check if we're at the end
   const audioTime = AudioController.getCurrentTime();
   const audioDuration = AudioController.getAudioDuration();
@@ -1789,19 +1349,22 @@ function startAnimation() {
   if (audioDuration > 0 && audioTime >= audioDuration - 0.1) {
     // We're at the end, reset to beginning
     AudioController.reset();
-    if (finished) finished.value = false;
-
-    if (endScene) {
-      endScene.hide();
-    }
+    resetLyrics();
   }
   
   AudioController.startAudio();
   lastTime = null;
   isAnimating = true;
+
+  
   
   if (stoppedInput) {
     stoppedInput.value = false;
+  }
+  
+  // Update controls
+  if (simpleControls) {
+    simpleControls.updatePlayButton(true);
   }
   
   animate(performance.now());
@@ -1823,7 +1386,16 @@ function pauseAnimation() {
     stoppedInput.value = true;
   }
   
-  // Don't reset finished state here - keep it true if song ended
+  // Update controls
+  if (simpleControls) {
+    simpleControls.updatePlayButton(false);
+  }
+}
+
+function resetGlitch() {
+  if (glitch) {
+    glitch.value = false;
+  }
 }
 
 // Initialize after delay
