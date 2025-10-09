@@ -7,14 +7,14 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 const BLADE_WIDTH = 0.2, BLADE_HEIGHT = 1.2, BLADE_HEIGHT_VARIATION = 0.8, BLADE_VERTEX_COUNT = 5, BLADE_TIP_OFFSET = 0.1;
 const GRASS_SPREAD = 10, TREE_SPREAD = 20, MIN_DISTANCE = 5, REMOVAL_Z = 20, GENERATION_Z = -70;
 const MIN_PATCH_SIZE = 10, MAX_PATCH_SIZE = 15, MIN_BLADE_COUNT = 30, MAX_BLADE_COUNT = 100;
-const TREE_CLEARANCE_FROM_CENTER = 7;
+const TREE_CLEARANCE_FROM_CENTER = 3;
 
 // Pool configuration
 const MAX_POOL_SIZE = 10; // Maximum objects to keep in each pool
 const GRASS_POOL_CATEGORIES = 3; // Small, medium, large grass patches
 
-const TREE_ROWS = 5;
-const TREES_PER_ROW_ATTEMPTS = 20;
+const TREE_ROWS = 6 ;
+const TREES_PER_ROW_ATTEMPTS = 200;
 
 // State
 let grassPatches = [], trees = [], treeModels = [], resourcesLoaded = { trees: false, grass: false };
@@ -280,6 +280,7 @@ function createTreeCreator(modelIndex) {
       material.shared = true;
       tree = new THREE.Mesh(geometry, material);
       tree.userData.modelIndex = -1;
+      console.log("no tree models loaded, using box fallback");
     } else {
       // Clone from loaded models
       const model = treeModels[modelIndex];

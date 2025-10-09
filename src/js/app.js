@@ -249,8 +249,8 @@ const config = {
       color: 0x000000
     },
     end: {
-      near: 3,
-      far: 20,
+      near: 2,
+      far: 10,
       color: 0x000000
     }
   },
@@ -852,7 +852,7 @@ async function completeSetup() {
   // Use default sky colors
   skyPlane = createSkyPlane({
     width: 300, height: 300,
-    position: new THREE.Vector3(0, 40, -50),
+    position: new THREE.Vector3(0, 50, -50),
     rotation: new THREE.Euler(Math.PI / 2.1, 0, Math.PI / -2),
     colors: {
       cloudColor: '#000000',
@@ -866,7 +866,7 @@ async function completeSetup() {
   const plane = new THREE.PlaneGeometry(1000, 1000);
   const background = new THREE.Mesh(plane, material);
   background.position.set(0, 0, -200);
-  scene.add(background);
+  // scene.add(background);
 
   cursorPlane.init(scene, camera);
 
