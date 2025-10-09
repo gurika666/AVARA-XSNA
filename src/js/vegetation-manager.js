@@ -7,23 +7,29 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 const BLADE_WIDTH = 0.2, BLADE_HEIGHT = 1.2, BLADE_HEIGHT_VARIATION = 0.8, BLADE_VERTEX_COUNT = 5, BLADE_TIP_OFFSET = 0.1;
 const GRASS_SPREAD = 10, TREE_SPREAD = 20, MIN_DISTANCE = 5, REMOVAL_Z = 20, GENERATION_Z = -70;
 const MIN_PATCH_SIZE = 10, MAX_PATCH_SIZE = 15, MIN_BLADE_COUNT = 30, MAX_BLADE_COUNT = 100;
-const TREE_CLEARANCE_FROM_CENTER = 3;
+const TREE_CLEARANCE_FROM_CENTER = 1;
 
 // Pool configuration
 const MAX_POOL_SIZE = 10; // Maximum objects to keep in each pool
 const GRASS_POOL_CATEGORIES = 3; // Small, medium, large grass patches
 
-const TREE_ROWS = 6 ;
+const TREE_ROWS = 6;
 const TREES_PER_ROW_ATTEMPTS = 200;
 
+// Eyes configuration
+const EYES_ROWS = 4; // Control overall number of eyes in scene
+const EYES_PER_ROW_ATTEMPTS = 100;
+const EYES_SPREAD = 15;
+
 // State
-let grassPatches = [], trees = [], treeModels = [], resourcesLoaded = { trees: false, grass: false };
+let grassPatches = [], trees = [], eyes = [], treeModels = [], eyeModel = null, resourcesLoaded = { trees: false, grass: false, eyes: false };
 let cloudTexture, gradientTexture;
 let isDisposed = false; // Track if manager has been disposed
 
 // SHARED MATERIALS - Create once, use everywhere
 let sharedGrassMaterial = null;
 let sharedTreeMaterials = new Map();
+let sharedEyeMaterials = new Map();
 
 // Improved Object Pool with proper memory management
 class ObjectPool {
@@ -150,6 +156,7 @@ class GrassPool {
 // Initialize pools
 const grassPool = new GrassPool();
 const treePool = new ObjectPool(MAX_POOL_SIZE);
+const eyePool = new ObjectPool(MAX_POOL_SIZE);
 
 // Utilities
 const interpolate = (val, oldMin, oldMax, newMin, newMax) => ((val - oldMin) * (newMax - newMin)) / (oldMax - oldMin) + newMin;
@@ -304,6 +311,41 @@ function createTreeCreator(modelIndex) {
   };
 }
 
+// Eye creation with proper material sharing
+function createEyeCreator() {
+  return () => {
+    let eye;
+    
+    if (!eyeModel) {
+      // Fallback sphere eye
+      const geometry = new THREE.SphereGeometry(0.5, 16, 16);
+      const material = sharedEyeMaterials.get('default') || 
+                       new THREE.MeshPhysicalMaterial({ color: 0xFFFFFF });
+      material.shared = true;
+      eye = new THREE.Mesh(geometry, material);
+      eye.userData.isEye = true;
+    } else {
+      // Clone from loaded model
+      eye = eyeModel.clone();
+      
+      // Apply shared materials
+      eye.traverse(child => {
+        if (child.isMesh && child.material) {
+          const materialName = child.material.name || 'default';
+          if (sharedEyeMaterials.has(materialName)) {
+            child.material = sharedEyeMaterials.get(materialName);
+            child.material.shared = true;
+          }
+        }
+      });
+      
+      eye.userData.isEye = true;
+    }
+    
+    return eye;
+  };
+}
+
 // Vegetation creation functions
 function createGrassPatch(scene, x, z, size, count) {
   const grassPatch = grassPool.get(size, count);
@@ -333,14 +375,32 @@ function createTree(scene, x, z) {
   return tree;
 }
 
+function createEye(scene, x, z) {
+  const eye = eyePool.get(createEyeCreator());
+  eye.position.set(x, 1, z); // Slightly above ground
+  eye.rotation.y = 0; // No rotation
+  
+  // Random flip on X axis (mirror)
+  eye.scale.x = Math.random() < 0.5 ? 1 : -1;
+  
+  if (!eye.parent) {
+    scene.add(eye);
+  }
+  
+  eyes.push(eye);
+  return eye;
+}
+
 function createInitialVegetation(scene) {
   if (isDisposed) return;
   
   // Clear existing - properly return to pools
   grassPatches.forEach(patch => grassPool.release(patch, scene));
   trees.forEach(tree => treePool.release(tree, scene));
+  eyes.forEach(eye => eyePool.release(eye, scene));
   grassPatches = []; 
   trees = [];
+  eyes = [];
   
   // Create grass patches
   createGrassPatch(scene, 0, -40, MAX_PATCH_SIZE, MAX_BLADE_COUNT);
@@ -360,13 +420,26 @@ function createInitialVegetation(scene) {
   
   // Create trees
   for (let i = 0; i < TREE_ROWS; i++) {
-  const z = -100 - (i * 10);
-  for (let j = 0; j < TREES_PER_ROW_ATTEMPTS; j++) {
+    const z = -100 - (i * 10);
+    for (let j = 0; j < TREES_PER_ROW_ATTEMPTS; j++) {
       const x = (Math.random() * 2 - 1) * TREE_SPREAD;
       if (!trees.some(t => 
         Math.pow(t.position.x - x, 2) + 
         Math.pow(t.position.z - z, 2) < MIN_DISTANCE * MIN_DISTANCE)) {
         createTree(scene, x, z);
+      }
+    }
+  }
+  
+  // Create eyes
+  for (let i = 0; i < EYES_ROWS; i++) {
+    const z = -80 - (i * 15);
+    for (let j = 0; j < EYES_PER_ROW_ATTEMPTS; j++) {
+      const x = (Math.random() * 2 - 1) * EYES_SPREAD;
+      if (!eyes.some(e => 
+        Math.pow(e.position.x - x, 2) + 
+        Math.pow(e.position.z - z, 2) < MIN_DISTANCE * MIN_DISTANCE)) {
+        createEye(scene, x, z);
       }
     }
   }
@@ -376,17 +449,19 @@ function createNewVegetation(scene, type) {
   if (isDisposed) return false;
   
   for (let attempts = 0; attempts < 10; attempts++) {
-    const spread = type === 'grass' ? GRASS_SPREAD : TREE_SPREAD;
+    const spread = type === 'grass' ? GRASS_SPREAD : 
+                  type === 'tree' ? TREE_SPREAD : EYES_SPREAD;
     const x = (type === 'grass' ? centerBiasedRandom() : (Math.random() * 2 - 1)) * spread;
     const z = GENERATION_Z - (Math.random() * 50);
     
-    const existing = type === 'grass' ? grassPatches : trees;
+    const existing = type === 'grass' ? grassPatches : 
+                    type === 'tree' ? trees : eyes;
     const tooClose = existing.some(obj => 
       Math.pow(obj.position.x - x, 2) + 
       Math.pow(obj.position.z - z, 2) < MIN_DISTANCE * MIN_DISTANCE
     );
     
-    const tooCloseToCamera = type === 'tree' && Math.abs(x) < TREE_CLEARANCE_FROM_CENTER;
+    const tooCloseToCamera = (type === 'tree' || type === 'eye') && Math.abs(x) < TREE_CLEARANCE_FROM_CENTER;
     
     if (!tooClose && !tooCloseToCamera) {
       if (type === 'grass') {
@@ -397,6 +472,8 @@ function createNewVegetation(scene, type) {
         createGrassPatch(scene, x, z, size, count);
       } else if (type === 'tree') {
         createTree(scene, x, z);
+      } else if (type === 'eye') {
+        createEye(scene, x, z);
       }
       return true;
     }
@@ -426,6 +503,11 @@ export function init(scene, manager) {
   defaultTreeMaterial.shared = true;
   sharedTreeMaterials.set('default', defaultTreeMaterial);
   
+  // Create default eye material
+  const defaultEyeMaterial = new THREE.MeshPhysicalMaterial({ color: 0xFFFFFF });
+  defaultEyeMaterial.shared = true;
+  sharedEyeMaterials.set('default', defaultEyeMaterial);
+  
   // Load cloud texture for grass
   const textureLoader = new THREE.TextureLoader(manager);
   textureLoader.load('images/cloud.jpg', 
@@ -446,21 +528,37 @@ export function init(scene, manager) {
   gltfLoader.load('mesh/trees_01.glb',
     gltf => {
       gltf.scene.traverse(child => {
-        if (child.isMesh && child.name.includes("Tree_")) {
-          treeModels.push(child);
-          
-          // Cache tree materials
-          if (child.material && !sharedTreeMaterials.has(child.material.name)) {
-            child.material.shared = true;
-            sharedTreeMaterials.set(child.material.name, child.material);
+        if (child.isMesh) {
+          if (child.name.includes("Tree_")) {
+            treeModels.push(child);
+            
+            // Cache tree materials
+            if (child.material && !sharedTreeMaterials.has(child.material.name)) {
+              child.material.shared = true;
+              sharedTreeMaterials.set(child.material.name, child.material);
+            }
+          } else if (child.name.toLowerCase().includes("eye")) {
+            // Found eye model
+            eyeModel = child;
+            
+            // Cache eye materials
+            if (child.material && !sharedEyeMaterials.has(child.material.name)) {
+              child.material.shared = true;
+              sharedEyeMaterials.set(child.material.name, child.material);
+            }
+            
+            resourcesLoaded.eyes = true;
           }
         }
       });
       resourcesLoaded.trees = true;
-   
     },
-  
-
+    undefined,
+    error => {
+      console.error('Failed to load GLB:', error);
+      resourcesLoaded.trees = true;
+      resourcesLoaded.eyes = true; // Mark as loaded even on error
+    }
   );
 }
 
@@ -472,11 +570,11 @@ export function createInitialVegetationWhenReady(scene) {
 
 export function updateVegetation(scene, deltaZ = 0.5) {
   if (!Object.values(resourcesLoaded).every(Boolean) || isDisposed) {
-    return { grass: 0, trees: 0 };
+    return { grass: 0, trees: 0, eyes: 0 };
   }
   
   // Move all vegetation forward
-  [...grassPatches, ...trees].forEach(obj => {
+  [...grassPatches, ...trees, ...eyes].forEach(obj => {
     obj.position.z += deltaZ;
   });
   
@@ -501,7 +599,17 @@ export function updateVegetation(scene, deltaZ = 0.5) {
     }
   }
   
-  return { grass: grassPatches.length, trees: trees.length };
+  // Handle eyes
+  for (let i = eyes.length - 1; i >= 0; i--) {
+    if (eyes[i].position.z > REMOVAL_Z) {
+      const eye = eyes[i];
+      eyePool.release(eye, scene);
+      eyes.splice(i, 1);
+      createNewVegetation(scene, 'eye');
+    }
+  }
+  
+  return { grass: grassPatches.length, trees: trees.length, eyes: eyes.length };
 }
 
 // Clear all vegetation from scene
@@ -509,22 +617,32 @@ export function clearAllVegetation(scene) {
   // Properly release all objects back to pools
   grassPatches.forEach(patch => grassPool.release(patch, scene));
   trees.forEach(tree => treePool.release(tree, scene));
+  eyes.forEach(eye => eyePool.release(eye, scene));
   
   grassPatches = [];
   trees = [];
+  eyes = [];
 }
 
 // Get pool statistics for debugging
 export function getPoolStats() {
   return {
     grass: grassPool.getStats(),
-    trees: treePool.getStats()
+    trees: treePool.getStats(),
+    eyes: eyePool.getStats()
   };
+}
+
+// Control function for eye density
+export function setEyeRows(rows) {
+  EYES_ROWS = Math.max(0, Math.min(10, rows)); // Clamp between 0-10 rows
 }
 
 export const isLoaded = () => Object.values(resourcesLoaded).every(Boolean);
 export const getTreeCount = () => trees.length;
+export const getEyeCount = () => eyes.length;
 export const getAllTrees = () => trees;
+export const getAllEyes = () => eyes;
 export const getAllGrassPatches = () => grassPatches;
 
 export function dispose() {
@@ -537,15 +655,21 @@ export function dispose() {
   trees.forEach(tree => {
     if (tree.parent) tree.parent.remove(tree);
   });
+  eyes.forEach(eye => {
+    if (eye.parent) eye.parent.remove(eye);
+  });
   
   // Dispose pools
   grassPool.dispose();
   treePool.dispose();
+  eyePool.dispose();
   
   // Clear arrays
   grassPatches = []; 
   trees = []; 
+  eyes = [];
   treeModels = [];
+  eyeModel = null;
   
   // Dispose shared materials
   if (sharedGrassMaterial) {
@@ -558,6 +682,11 @@ export function dispose() {
   });
   sharedTreeMaterials.clear();
   
+  sharedEyeMaterials.forEach(material => {
+    if (material && !material.shared) material.dispose();
+  });
+  sharedEyeMaterials.clear();
+  
   // Dispose textures
   if (cloudTexture && cloudTexture.userData.disposable) {
     cloudTexture.dispose();
@@ -568,5 +697,5 @@ export function dispose() {
     gradientTexture = null;
   }
   
-  resourcesLoaded = { trees: false, grass: false };
+  resourcesLoaded = { trees: false, grass: false, eyes: false };
 }

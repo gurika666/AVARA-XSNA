@@ -515,7 +515,7 @@ function updateGlitch(audioTime) {
   const cycleTime = audioTime % 15; // Get position within 15-second cycle
   
   // Glitch is ON between 0-4 seconds of each cycle
-  glitch.value = (cycleTime >= 0 && cycleTime < 4);
+  glitch.value = (cycleTime >= 0 && cycleTime < 2);
 }
 
 
@@ -715,6 +715,37 @@ async function loadGLB(path, manager) {
         
         // Apply star nest shader using unified shader manager
         starNestMaterials = applyStarNestToModel(gltfModel, resources);
+
+         gltfModel.traverse((child) => {
+          if (child.isMesh && child.material) {
+            // Handle both single materials and material arrays
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            
+            materials.forEach((mat, index) => {
+              if (mat.name === 'metal_1') {
+                // Create new metallic physical material
+                const metallicMaterial = new THREE.MeshPhysicalMaterial({
+                  metalness: 1.0,
+                  roughness: 0.2,
+                  envMap: resources.txthdr,
+                  envMapIntensity: 0.5,
+                 
+                });
+                
+               
+                
+                // Replace the material
+                if (Array.isArray(child.material)) {
+                  child.material[index] = metallicMaterial;
+                } else {
+                  child.material = metallicMaterial;
+                }
+                
+                console.log('Replaced metal_01 with metallic physical material');
+              }
+            });
+          }
+        });
         
         const { position: p, scale: s, rotation: r } = config.glb;
         gltfModel.position.copy(p);
@@ -965,7 +996,7 @@ function updateHeadLookAtOptimized(camera, deltaTime) {
   const normalizedMouseY = -(mouseY / (window.innerHeight * 0.5));
   
   const maxRotationX = Math.PI / 8;
-  const maxRotationY = Math.PI / 6;
+  const maxRotationY = Math.PI / 8;
   
   animationCache.baseRotationOffset.setFromEuler(new THREE.Euler(-Math.PI / 18, 0, 0));
   
