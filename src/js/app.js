@@ -1071,8 +1071,8 @@ function setupPostProcessing() {
   const gamma = new ShaderPass(GammaCorrectionShader);
 
   composer.addPass(depthBlurPass);
-  composer.addPass(chromaticAberrationPass);
-  composer.addPass(bloomPass); 
+  // composer.addPass(chromaticAberrationPass);
+  // composer.addPass(bloomPass); 
   composer.addPass(gamma);
 }
 
