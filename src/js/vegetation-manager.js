@@ -287,7 +287,7 @@ function createTreeCreator(modelIndex) {
       material.shared = true;
       tree = new THREE.Mesh(geometry, material);
       tree.userData.modelIndex = -1;
-      console.log("no tree models loaded, using box fallback");
+      // console.log("no tree models loaded, using box fallback");
     } else {
       // Clone from loaded models
       const model = treeModels[modelIndex];

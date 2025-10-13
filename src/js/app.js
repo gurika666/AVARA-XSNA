@@ -240,7 +240,7 @@ class AnimationStateMachine {
         break;
     }
     
-    console.log(`State: ${this.getStateName(this.previousState)} -> ${this.getStateName(this.currentState)}`);
+    // console.log(`State: ${this.getStateName(this.previousState)} -> ${this.getStateName(this.currentState)}`);
   }
   
   getStateName(state = this.currentState) {
@@ -555,14 +555,14 @@ async function loadRiveOverlay() {
       
       rive.on(EventType.RiveEvent || 'spotifyevent', (event) => {
         if (event.data.name === 'spotify') {
-          console.log('Spotify event received');
+          // console.log('Spotify event received');
           window.location.assign('https://open.spotify.com/artist/5UZEQzbK7ktedLBHvZ2wkJ?si=heZI_ZZFRO6ms4xBZURn7A', '_blank');
         }
       });
 
       rive.on(EventType.RiveEvent || 'instaevent', (event) => {
         if (event.data.name === 'instagram') {
-          console.log('Instagram event received');
+          // console.log('Instagram event received');
           window.location.assign('https://www.instagram.com/avara.band?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==', '_top');
         }
       });
@@ -810,7 +810,7 @@ async function loadGLB(path, manager) {
                   child.material = metallicMaterial;
                 }
                 
-                console.log('Replaced metal_01 with metallic physical material');
+                // console.log('Replaced metal_01 with metallic physical material');
               }
             });
           }
@@ -961,7 +961,7 @@ function startAnimation() {
 
 function pauseAnimation() {
 
-console.log('Pausing animation');
+// console.log('Pausing animation');
 
 glitch.value = true;
 
@@ -993,7 +993,7 @@ async function completeSetup() {
   
   await new Promise(resolve => setTimeout(resolve, 1000));
 
-  console.log('Starting scene');
+  // console.log('Starting scene');
 
   camera = new THREE.PerspectiveCamera(config.camera.fov, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 2, 0);

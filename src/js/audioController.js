@@ -165,7 +165,7 @@ export function isCurrentlyPlaying() {
 // Set volume (0-1)
 export function setVolume(value) {
   // You can implement a GainNode if volume control is needed
-  console.log("Volume control not implemented in this version");
+  // console.log("Volume control not implemented in this version");
 }
 
 export function seekTo(time) {
