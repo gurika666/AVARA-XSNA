@@ -26,6 +26,7 @@
     "@rive-app/canvas-advanced": "^2.30.1",
     "@rive-app/webgl": "^2.30.1",
     "@rive-app/webgl2": "^2.30.1",
+    "@vercel/analytics": "^1.5.0",
     "@vercel/speed-insights": "^1.2.0",
     "vite-plugin-html": "^3.2.0",
     "wiggle": "^0.0.17"

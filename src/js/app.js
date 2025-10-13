@@ -9,6 +9,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader';
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
+import { inject } from '@vercel/analytics';
 
 // Import unified shader manager
 import { 
@@ -20,6 +21,9 @@ import {
   updateStarNestMaterials,
   SHADER_QUALITY 
 } from './shader-manager.js';
+
+
+inject();
 
 // Import other modules
 import * as AudioController from './audioController.js';
