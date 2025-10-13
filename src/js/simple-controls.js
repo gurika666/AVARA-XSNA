@@ -173,8 +173,8 @@ class SimpleControls {
       /* Mobile responsive */
       @media (max-width: 768px) {
         .simple-controls {
-          bottom: 30px;
-          width: 90%;
+          bottom: 10px;
+          width: 80%;
           gap: 20px;
         }
         

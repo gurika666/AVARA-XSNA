@@ -416,7 +416,7 @@ const lyricsData = [
   { time: 143.0, text: "Everytime shen titqos emalebi" },
   { time: 146.5, text: "Acade Acade Acade" },
   { time: 148.5, text: "Samyaro tviton getyvis" },
-  { time: 150.0, text: "Sadac ar undda iyo" },
+  { time: 150.0, text: "Sadac ar unda iyo" },
   { time: 153.0, text: "Shenamde mosasvleli gza minda viyo" },
   { time: 156.0, text: "" },
   { time: 159.0, text: "Rasac ar unda fiqrobde" },
@@ -443,7 +443,7 @@ async function init() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
 
-  const pixelRatio = window.isMobile ? 0.7 : 1;
+  const pixelRatio = window.isMobile ? 0.2 : 1;
   renderer.setPixelRatio(0.6);
   renderer.setSize(window.innerWidth, window.innerHeight);
   
@@ -952,11 +952,19 @@ function startAnimation() {
   if (simpleControls) {
     simpleControls.updatePlayButton(true);
   }
+
+  window.dispatchEvent(new CustomEvent('animationStateChange', { detail: { isPlaying: true }}));
+
   
   animate(performance.now());
 }
 
 function pauseAnimation() {
+
+console.log('Pausing animation');
+
+glitch.value = true;
+
   if (!isAnimating) {
     return;
   }
@@ -1312,21 +1320,27 @@ function animate(time) {
     updateStarNestMaterials(starNestMaterials, deltaTime, mouseX, mouseY, audioTime);
   }
   
-  if (stateMachine.isSkyShaderActive()) {
+ if (stateMachine.isSkyShaderActive()) {
     updateCloudUniforms(skyPlane.material, audioTime * 0.03, window.innerWidth, window.innerHeight);
     
     // Update sky colors based on state
     if (skyPlane && skyPlane.material && skyPlane.material.uniforms) {
       let targetColors;
       
-      if (stateMachine.isInState('MINIMAL')) {
+      // Determine target colors based on current state
+      if (stateMachine.isInState('STAR_START')) {
         targetColors = TIMING.skyColors.starStart;
+      } else if (stateMachine.isInState('MINIMAL')) {
+        targetColors = TIMING.skyColors.starStart; // Keep star colors in MINIMAL
+      } else if (stateMachine.isInState('IDLE')) {
+        targetColors = TIMING.skyColors.idle;
       } else {
+        // Default to idle colors for any other state
         targetColors = TIMING.skyColors.idle;
       }
       
-      // Smooth color transition
-      const lerpFactor = deltaTime * 0.1; // Adjust for transition speed
+      // Smooth color transition with increased speed for better responsiveness
+      const lerpFactor = deltaTime * 0.5; // Increased from 0.1 for faster transitions
       
       skyPlane.material.uniforms.cloudColor.value.lerp(targetColors.cloudColor, lerpFactor);
       skyPlane.material.uniforms.skyTopColor.value.lerp(targetColors.skyTopColor, lerpFactor);
