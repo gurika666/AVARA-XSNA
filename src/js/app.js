@@ -1,4 +1,4 @@
-// app.js - Simplified version with custom HTML controls alongside Rive
+// app.js - Streamlined version with centralized timing configuration
 import * as THREE from "three";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -30,11 +30,96 @@ import { DepthDrivenBlurPass } from './custom-dof.js';
 import { Rive, EventType, RiveEventType, Layout, Fit, Alignment } from '@rive-app/webgl2';
 import SimpleControls from './simple-controls.js';
 
+// ============================================================================
+// CENTRALIZED TIMING CONFIGURATION
+// ============================================================================
+const TIMING = {
+  // Main state transitions (in seconds)
+  states: {
+    IDLE_END: 90,        // When IDLE ends and STAR_START begins
+    STAR_START_END: 100,  // When STAR_START ends and MINIMAL begins  
+    MINIMAL_END: 120,     // When MINIMAL ends and FINAL begins
+  },
+  
+  // Camera animations
+  camera: {
+    // First animation (during STAR_START state)
+    first: {
+      get start() { return TIMING.states.IDLE_END; }, // Auto-sync with state
+      get end() { return TIMING.states.STAR_START_END; },
+      startPos: new THREE.Vector3(0, 2, 0),
+      endPos: new THREE.Vector3(0, 12, -94),
+      startRot: new THREE.Euler(0, 0, 0),
+      endRot: new THREE.Euler(0.8, 0, 0),
+      startFOV: 40,
+      endFOV: 90
+    },
+    
+    // Second animation (during FINAL state)
+    second: {
+      get start() { return TIMING.states.MINIMAL_END; }, // Auto-sync with state
+      end: 130,
+      startPos: new THREE.Vector3(0, 12, -94),
+      endPos: new THREE.Vector3(0, 12, -95),
+      startRot: new THREE.Euler(0.8, 0, 0),
+      endRot: new THREE.Euler(0, 0, 0),
+      startFOV: 90,
+      endFOV: 10
+    }
+  },
+  
+  // Character animations
+  character: {
+    walkToFaceUp: {
+      start: 96,      // When to start transitioning
+      duration: 4.8   // How long the blend takes
+    }
+  },
+  
+  // Special effects
+  effects: {
+    swirl: {
+      delayAfterFinalState: 25,  // Seconds after FINAL state starts
+      duration: 10                // How long swirl lasts
+    }
+  },
+  
+  // Sky colors for different states
+  skyColors: {
+    idle: {
+      cloudColor: new THREE.Vector3(0, 0, 0),        // Black clouds
+      skyTopColor: new THREE.Vector3(0.002, 0.090, 0.480),  // Dark blue
+      skyBottomColor: new THREE.Vector3(0, 0, 0)     // Black
+    },
+    starStart: {
+      cloudColor: new THREE.Vector3(0, 0, 0),  // Purple clouds
+      skyTopColor: new THREE.Vector3(1, 0.005, 0), // Purple top
+      skyBottomColor: new THREE.Vector3(0, 0, 0) // Dark purple bottom
+    }
+  },
+  
+  // Fog configuration
+  fog: {
+    start: {
+      near: 30,
+      far: 100,
+      color: 0x000000
+    },
+    end: {
+      near: 2,
+      far: 10,
+      color: 0x000000
+    }
+  }
+};
 
-
-// State Machine Class
+// ============================================================================
+// STATE MACHINE CLASS
+// ============================================================================
 class AnimationStateMachine {
-  constructor() {
+  constructor(timingConfig = TIMING) {
+    this.timing = timingConfig;
+    
     this.STATES = {
       IDLE: 1,
       STAR_START: 2,
@@ -46,9 +131,9 @@ class AnimationStateMachine {
     this.previousState = null;
     
     this.transitions = {
-      toStarStart: 60,
-      toMinimal: 80,
-      toFinal: 85
+      toStarStart: timingConfig.states.IDLE_END,
+      toMinimal: timingConfig.states.STAR_START_END,
+      toFinal: timingConfig.states.MINIMAL_END
     };
     
     this.stateFlags = {
@@ -61,8 +146,8 @@ class AnimationStateMachine {
     };
     
     this.swirlAnimation = {
-      startDelay: 25,
-      duration: 10,
+      startDelay: timingConfig.effects.swirl.delayAfterFinalState,
+      duration: timingConfig.effects.swirl.duration,
       stateEntryTime: null
     };
   }
@@ -130,7 +215,7 @@ class AnimationStateMachine {
         this.stateFlags = {
           starShaderActive: true,
           firstCameraAnimActive: false,
-          skyShaderActive: false,
+          skyShaderActive: true,
           vegetationActive: false,
           secondCameraAnimActive: false,
           swirlAnimActive: false
@@ -181,12 +266,13 @@ class AnimationStateMachine {
   }
 }
 
-// Simple mobile detection
+// ============================================================================
+// GLOBALS AND CONFIGURATION
+// ============================================================================
 window.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
                   (window.innerWidth <= 768);
 
-// Initialize state machine
-const stateMachine = new AnimationStateMachine();
+const stateMachine = new AnimationStateMachine(TIMING);
 
 let simpleControls;
 let depthBlurPass;
@@ -195,13 +281,13 @@ let width;
 let stoppedInput;
 let loadedInput;
 let loadingProgress; 
-let playingInput; // Add playing boolean from Rive
+let playingInput;
 let currentProgress = 0;
 let progressInterval = null;
 let starNestMaterials = new Map();
 let lyrics;
 
-// Globals
+// Three.js globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass;
 let isAnimating = false, animationId = null, lastTime = null, isSetupComplete = false;
 let skyPlane, gltfMixer, gltfModel, gltfAnimationActions = [];
@@ -211,7 +297,7 @@ let cursorPlane = new CursorPlane();
 const canvas = document.querySelector('.main-animation');
 const rivecanvas = document.querySelector('.rive');
 
-// Camera tracking globals
+// Camera tracking
 let baseCameraPos = new THREE.Vector3();
 let baseCameraRot = new THREE.Euler();
 
@@ -219,17 +305,19 @@ const LAYERS = {
   DOFIGNORE: 2,
 };
 
+// Animation variables
 let walkAnimation = null;
 let faceUpAnimation = null;
 let hasTransitioned = false;
 let isInTransition = false;
 let transitionStartTime = null;
 
+// Head tracking
 let headBone = null;
 let headQuaternion = new THREE.Quaternion();
 let targetQuaternion = new THREE.Quaternion();
 
-// Mouse tracking for inactivity
+// Mouse tracking
 let lastMouseX = 0;
 let lastMouseY = 0;
 let mouseInactiveFrames = 0;
@@ -237,23 +325,14 @@ const MOUSE_INACTIVE_THRESHOLD = 60;
 const MOUSE_MOVEMENT_THRESHOLD = 2;
 
 const textureloader = new THREE.TextureLoader();
+
+// Static configuration
 const config = {
   text: { size: 2, height: 0.1, depth: 1, z: -50 },
   bloom: { strength: 0.2, radius: 2.0, threshold: 0.1 },
   chromaticAberration: { strength: 0.01 },
   camera: { fov: 40 },
-  fog: {
-    start: {
-      near: 30,
-      far: 100,
-      color: 0x000000
-    },
-    end: {
-      near: 2,
-      far: 10,
-      color: 0x000000
-    }
-  },
+  fog: TIMING.fog,
   glb: {
     path: 'mesh/latex.glb',
     position: new THREE.Vector3(0, 0, -100),
@@ -261,13 +340,11 @@ const config = {
     rotation: new THREE.Euler(0, 0, 0),
     autoplay: true
   },
-  // Default sky colors
   sky: {
     cloudColor: new THREE.Vector3(0, 0, 0),
     skyTopColor: new THREE.Vector3(0.002, 0.090, 0.480),
     skyBottomColor: new THREE.Vector3(0, 0, 0)
   },
-  // Default star colors
   stars: {
     nebulaColor1: new THREE.Vector3(1.0, 0.2, 0.5),
     nebulaColor2: new THREE.Vector3(0.1, 0.5, 1.0),
@@ -275,40 +352,10 @@ const config = {
   }
 };
 
-// Animation timing
-const animStartTime = 60;
-const animEndTime = 80;
-const transitionTime = 77;
-const transitionDuration = 2.8;
-
-// First camera animation
-let startPos = new THREE.Vector3(0, 2, 0);
-let endPos = new THREE.Vector3(0, 12, -94);
-
-let startRot = new THREE.Euler(0, 0, 0);
-let endRot = new THREE.Euler(0.8, 0, 0);
-
-let startFOV = 40;
-let endFOV = 90;
-
-// Second camera animation
-let startPos2 = new THREE.Vector3(0, 12, -94);
-let endPos2 = new THREE.Vector3(0, 12, -95);
-
-let startRot2 = new THREE.Euler(0.8, 0, 0);
-let endRot2 = new THREE.Euler(0, 0, 0);
-
-let startFOV2 = 90;
-let endFOV2 = 10;
-
-// Second animation timing
-const animStartTime2 = 85;
-const animEndTime2 = 110;
-  
 let fogStartColor = new THREE.Color(0x000000);
 let fogEndColor = new THREE.Color(0x000000);
 
-// Resources to be loaded
+// Resources
 const resources = {
   hdri: null,
   txthdr: null,
@@ -318,66 +365,101 @@ const resources = {
   vegetation: null
 };
 
+// Lyrics data
 const lyricsData = [
-  { time: 0, text: "hello world" }, // Start with empty
-  { time: 2.5, text: "First line of lyrics here" },
-  { time: 5.0, text: "Second line goes here" },
-  { time: 8.2, text: "Another line of text" },
-  { time: 12.0, text: "Next phrase or line" },
-  { time: 15.5, text: "" }, // Clear between verses
-  { time: 18.0, text: "New verse starts here" },
-  { time: 22.0, text: "Continue with more lines" },
-  { time: 26.5, text: "Add as many as needed" },
-  { time: 30.0, text: "" }, // Clear again
-  // Continue adding timing points...
-  { time: 60.0, text: "Lyrics at 1 minute mark" },
-  { time: 65.0, text: "More lyrics here" },
-  { time: 70.0, text: "" },
-  { time: 75.0, text: "Another section" },
-  { time: 80.0, text: "Keep going" },
-  { time: 85.0, text: "Final section starts" },
-  { time: 90.0, text: "Almost done" },
-  { time: 95.0, text: "Last line" },
-  { time: 100.0, text: "" }, // Clear at end
+
+  { time: 26.0, text: "Tvalebs adevs nami" }, 
+  { time: 29.0, text: "Zgvaa dzaan wynari" },
+  { time: 32.0, text: "Caze fantavs elvebs" },
+  { time: 35.0, text: "Dauokebeli brazi" },
+  { time: 38.0, text: "Axals arafers ar getyvi" },
+  { time: 40.5, text: "Rasac akamde shen" },
+  { time: 43.0, text: "Ebrdzvi!" },
+  { time: 45.0, text: "Dalewili dzvlebit" },
+  { time: 48.0, text: "" },
+  { time: 50.0, text: "Sadac ar unda iyo" },
+  { time: 53.5, text: "Shenamde mosasvleli" },
+  { time: 56.0, text: "Gza minda viyo" },
+  { time: 60.0, text: "" },
+  { time: 62.0, text: "Razec ar unda gelavde" },
+  { time: 66.0, text: "Me shentvis movlenili" },
+  { time: 68.0, text: "XSNA minda viyo" },
+  { time: 71.0, text: "" },
+  { time: 72.0, text: "Rasac ar unda fiqrobde" },
+  { time: 76.0, text: "Razec ar unda gelavde" },
+  { time: 79.0, text: "Rasac ar unda fiqrobde" },
+  { time: 84.0, text: "Me sheni XSNA minda viyo!" },
+  { time: 88.0, text: "Rasac ar unda fiqrobde" },
+  { time: 91.0, text: "Razec ar unda gelavde" },
+  { time: 96.0, text: "Me sheni XSNA minda viyo!" },
+  { time: 100.0, text: "" },
+  { time: 109.0, text: "Me sheni XSNA minda viyo" },
+  { time: 112.0, text: "" },
+  { time: 121.0, text: "Me sheni XSNA minda viyo" },
+  { time: 124.0, text: "Macade Macade Macade Macade" },
+  { time: 126.0, text: "Uceb getyvi" },
+  { time: 127.5, text: "Usmine Usmine Usmine" },
+  { time: 129.0, text: "Usityvod rom ver xvdebi" },
+  { time: 131.0, text: "Gadade Gadade Gadade" },
+  { time: 133.0, text: "Rasac shvrebi" },
+  { time: 134.5, text: "Acade Acade Acade" },
+  { time: 136.0, text: "Samyaro tviton getyvis" },
+  { time: 137.5, text: "Azrebi Ambebi Bedi" },
+  { time: 138.5, text: "Momavlis nostalgiebi" },
+  { time: 140.0, text: "Ulevi Ulevi" },
+  { time: 141.0, text: "Usasrulobidan wamosuli" },
+  { time: 142.0, text: "Erevi Erevi" },
+  { time: 143.0, text: "Everytime shen titqos emalebi" },
+  { time: 146.5, text: "Acade Acade Acade" },
+  { time: 148.5, text: "Samyaro tviton getyvis" },
+  { time: 150.0, text: "Sadac ar undda iyo" },
+  { time: 153.0, text: "Shenamde mosasvleli gza minda viyo" },
+  { time: 156.0, text: "" },
+  { time: 159.0, text: "Rasac ar unda fiqrobde" },
+  { time: 162.0, text: "razec ar unda gelavde" },
+  { time: 165.0, text: "Rasac ar unda fiqrobde" },
+  { time: 168.0, text: "" },
+  { time: 170.5, text: "Me sheni XSNA minda viyo" },
+  { time: 183.5, text: "Me sheni XSNA minda viyo" },
+  { time: 187.0, text: "" },
+  { time: 195.0, text: "Me sheni XSNA minda viyo" },
+  { time: 200.0, text: "" },
 ];
 
 let currentLyricIndex = -1;
 let glitch, finishedInput;
 
+// ============================================================================
+// INITIALIZATION AND SETUP
+// ============================================================================
 async function init() {
   loadRiveOverlay();
 
-  // Setup renderer first
   renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvas });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
 
   const pixelRatio = window.isMobile ? 0.7 : 1;
   renderer.setPixelRatio(0.6);
-
   renderer.setSize(window.innerWidth, window.innerHeight);
   
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   scene.fog = new THREE.Fog(config.fog.start.color, config.fog.start.near, config.fog.start.far);
   
-  // Initialize controllers
   AudioController.init({});
   
-  // Initialize simple custom controls
   simpleControls = new SimpleControls();
   simpleControls.init(
-    () => togglePlayPause(), // Play/pause callback
-    (seekTime) => {          // Seek callback
+    () => togglePlayPause(),
+    (seekTime) => {
       AudioController.seekTo(seekTime);
     }
   );
-  simpleControls.hide(); // Hide until loaded
+  simpleControls.hide();
   
-  // Setup event listeners
   setupEventListeners();
   
-  // Start loading all resources
   try {
     await loadAllResources();
     completeSetup();
@@ -387,10 +469,8 @@ async function init() {
 }
 
 function setupEventListeners() {
-  // Window resize
   window.addEventListener('resize', onWindowResize);
   
-  // Mouse/touch movement
   document.addEventListener('mousemove', e => {
     mouseX = e.clientX - window.innerWidth / 2;
     mouseY = e.clientY - window.innerHeight / 2;
@@ -404,7 +484,6 @@ function setupEventListeners() {
     }
   }, { passive: false });
   
-  // Keyboard controls
   document.addEventListener('keydown', e => {
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
@@ -424,6 +503,9 @@ function setupEventListeners() {
   });
 }
 
+// ============================================================================
+// RIVE INTEGRATION
+// ============================================================================
 async function loadRiveOverlay() {
   rive = new Rive({
     src: 'animations/xsna.riv',
@@ -449,32 +531,24 @@ async function loadRiveOverlay() {
       stoppedInput = inputs.find(i => i.name === 'stopped');
       loadedInput = inputs.find(i => i.name === 'Loaded');
       
-      
-      // Watch for playing state changes from Rive
       if (playingInput) {
-        // Poll for changes (Rive doesn't have native change listeners)
         setInterval(() => {
           if (playingInput.value && !isAnimating && isSetupComplete) {
-            // Rive wants to play - reset finished state and start
             if (finishedInput) {
               finishedInput.value = false;
             }
             startAnimation();
-            // Show controls when playing starts
             if (simpleControls) {
-              setInterval(() => {
-              simpleControls.show();
+              setTimeout(() => {
+                simpleControls.show();
               }, 2150);
             }
           } else if (!playingInput.value && isAnimating) {
-            // Rive says stop, but we're playing
-            // Don't change finished state here - let pause/finish handlers set it
             pauseAnimation();
           }
         }, 100);
       }
       
-      // Spotify event
       rive.on(EventType.RiveEvent || 'spotifyevent', (event) => {
         if (event.data.name === 'spotify') {
           console.log('Spotify event received');
@@ -482,7 +556,6 @@ async function loadRiveOverlay() {
         }
       });
 
-      // Instagram event
       rive.on(EventType.RiveEvent || 'instaevent', (event) => {
         if (event.data.name === 'instagram') {
           console.log('Instagram event received');
@@ -507,22 +580,18 @@ async function loadRiveOverlay() {
   });
 }
 
-
+// ============================================================================
+// ANIMATION UPDATES
+// ============================================================================
 function updateGlitch(audioTime) {
   if (!glitch) return;
-  
-  // Every 15 seconds, turn on for 4 seconds
-  const cycleTime = audioTime % 15; // Get position within 15-second cycle
-  
-  // Glitch is ON between 0-4 seconds of each cycle
+  const cycleTime = audioTime % 15;
   glitch.value = (cycleTime >= 0 && cycleTime < 2);
 }
-
 
 function updateLyrics(audioTime) {
   if (!lyrics || !lyricsData.length) return;
   
-  // Find the appropriate lyric index for current time
   let targetIndex = -1;
   for (let i = lyricsData.length - 1; i >= 0; i--) {
     if (audioTime >= lyricsData[i].time) {
@@ -531,20 +600,16 @@ function updateLyrics(audioTime) {
     }
   }
   
-  // Only update if we've moved to a new lyric
   if (targetIndex !== currentLyricIndex) {
     currentLyricIndex = targetIndex;
     
     if (targetIndex >= 0) {
       lyrics.value = lyricsData[targetIndex].text;
-      // Optional: log for debugging
-      // console.log(`Lyrics updated at ${audioTime.toFixed(1)}s: "${lyricsData[targetIndex].text}"`);
     } else {
       lyrics.value = "";
     }
   }
 }
-
 
 function resetLyrics() {
   currentLyricIndex = -1;
@@ -553,6 +618,15 @@ function resetLyrics() {
   }
 }
 
+function resetGlitch() {
+  if (glitch) {
+    glitch.value = false;
+  }
+}
+
+// ============================================================================
+// LOADING
+// ============================================================================
 function animateProgressTo(targetValue) {
   if (progressInterval) {
     clearInterval(progressInterval);
@@ -681,8 +755,6 @@ async function loadHDRTexture(path, key, manager) {
       texture => {
         texture.mapping = THREE.EquirectangularReflectionMapping;
         resources[key] = texture;
-    
-     
         resolve();
       },
       undefined,
@@ -713,28 +785,21 @@ async function loadGLB(path, manager) {
       gltf => {
         gltfModel = gltf.scene;
         
-        // Apply star nest shader using unified shader manager
         starNestMaterials = applyStarNestToModel(gltfModel, resources);
 
-         gltfModel.traverse((child) => {
+        gltfModel.traverse((child) => {
           if (child.isMesh && child.material) {
-            // Handle both single materials and material arrays
             const materials = Array.isArray(child.material) ? child.material : [child.material];
             
             materials.forEach((mat, index) => {
               if (mat.name === 'metal_1') {
-                // Create new metallic physical material
                 const metallicMaterial = new THREE.MeshPhysicalMaterial({
                   metalness: 1.0,
                   roughness: 0.2,
                   envMap: resources.txthdr,
                   envMapIntensity: 0.5,
-                 
                 });
                 
-               
-                
-                // Replace the material
                 if (Array.isArray(child.material)) {
                   child.material[index] = metallicMaterial;
                 } else {
@@ -753,10 +818,8 @@ async function loadGLB(path, manager) {
         gltfModel.rotation.copy(r);
         scene.add(gltfModel);
         
-        // Setup tracking systems
         setupHeadTracking();
         
-        // Handle animations
         if (gltf.animations?.length) {
           gltfMixer = new THREE.AnimationMixer(gltfModel);
           gltf.animations.forEach(clip => {
@@ -838,6 +901,9 @@ async function initVegetation(manager) {
   });
 }
 
+// ============================================================================
+// PLAYBACK CONTROL
+// ============================================================================
 function togglePlayPause() {
   if (!isSetupComplete) {
     return;
@@ -849,17 +915,67 @@ function togglePlayPause() {
     startAnimation();
   }
   
-  // Update Rive playing boolean to match
   if (playingInput) {
     playingInput.value = isAnimating;
   }
   
-  // Show controls when playing starts
   if (isAnimating && simpleControls) {
     simpleControls.show();
   }
 }
 
+function startAnimation() {
+  if (isAnimating) {
+    return;
+  }
+  
+  const audioTime = AudioController.getCurrentTime();
+  const audioDuration = AudioController.getAudioDuration();
+  
+  if (audioDuration > 0 && audioTime >= audioDuration - 0.1) {
+    AudioController.reset();
+    resetLyrics();
+  }
+  
+  AudioController.startAudio();
+  lastTime = null;
+  isAnimating = true;
+  
+  if (stoppedInput) {
+    stoppedInput.value = false;
+  }
+  
+  if (simpleControls) {
+    simpleControls.updatePlayButton(true);
+  }
+  
+  animate(performance.now());
+}
+
+function pauseAnimation() {
+  if (!isAnimating) {
+    return;
+  }
+  
+  AudioController.pauseAudio();
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
+  isAnimating = false;
+  
+  if (stoppedInput) {
+    stoppedInput.value = true;
+  }
+  
+  if (simpleControls) {
+    simpleControls.updatePlayButton(false);
+  }
+}
+
+// ============================================================================
+// SCENE SETUP
+// ============================================================================
 async function completeSetup() {
   if (isSetupComplete) return;
   
@@ -880,7 +996,6 @@ async function completeSetup() {
   setupPostProcessing();
   setupLights();
   
-  // Use default sky colors
   skyPlane = createSkyPlane({
     width: 300, height: 300,
     position: new THREE.Vector3(0, 50, -50),
@@ -893,12 +1008,6 @@ async function completeSetup() {
   });
   scene.add(skyPlane);
 
-  const material = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide });
-  const plane = new THREE.PlaneGeometry(1000, 1000);
-  const background = new THREE.Mesh(plane, material);
-  background.position.set(0, 0, -200);
-  // scene.add(background);
-
   cursorPlane.init(scene, camera);
 
   if (cursorPlane.plane) {
@@ -909,13 +1018,9 @@ async function completeSetup() {
   
   isSetupComplete = true;
 
-  // Hide the loading screen in Rive
   if (loadedInput) {
     loadedInput.value = true;
   }
-  
-  // Don't show controls yet - wait for playing to be true
-  // Controls will be shown when playing boolean becomes true in Rive
 }
 
 function setupHeadTracking() {
@@ -934,13 +1039,66 @@ function setupHeadTracking() {
   }
 }
 
+function setupPostProcessing() {
+  composer = new EffectComposer(renderer);
+
+  const taaRenderPass = new TAARenderPass(scene, camera);
+  taaRenderPass.unbiased = false;
+  taaRenderPass.sampleLevel = 1;
+  composer.addPass(taaRenderPass);
+  
+  bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    config.bloom.strength, 
+    config.bloom.radius, 
+    config.bloom.threshold
+  );
+  bloomPass.renderTargetsHorizontal.forEach(target => {
+    target.texture.minFilter = THREE.LinearFilter;
+    target.texture.magFilter = THREE.LinearFilter;
+  });
+  bloomPass.renderTargetsVertical.forEach(target => {
+    target.texture.minFilter = THREE.LinearFilter;
+    target.texture.magFilter = THREE.LinearFilter;
+  });
+  
+  chromaticAberrationPass = new ChromaticAberrationPass(config.chromaticAberration.strength);
+  chromaticAberrationPass.update(renderer, window.innerWidth, window.innerHeight);
+
+  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 1.0);
+  depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
+
+  const gamma = new ShaderPass(GammaCorrectionShader);
+
+  composer.addPass(depthBlurPass);
+  composer.addPass(chromaticAberrationPass);
+  composer.addPass(bloomPass); 
+  composer.addPass(gamma);
+}
+
+function setupLights() {
+  scene.add(new THREE.DirectionalLight(0x111111, 5));
+  
+  spotlight = new THREE.SpotLight(0xff0000, 5);
+  Object.assign(spotlight, { angle: Math.PI / 12, penumbra: 0.7, decay: 1, distance: 100 });
+  spotlight.position.set(0, 2, 0);
+  
+  const spotlightTarget = new THREE.Object3D();
+  spotlightTarget.position.set(0, 0, -100);
+  scene.add(spotlightTarget);
+  spotlight.target = spotlightTarget;
+  scene.add(spotlight);
+}
+
+// ============================================================================
+// ANIMATION HELPERS
+// ============================================================================
 function updateSwirlAnimation(audioTime) {
   if (!starNestMaterials || starNestMaterials.size === 0) return;
   
   const swirlProgress = stateMachine.getSwirlProgress(audioTime);
   
   if (swirlProgress < 0) {
-    // Swirl not active - use default values
     starNestMaterials.forEach(material => {
       if (material.userData?.uniforms) {
         material.userData.uniforms.swirlAmount.value = 2.5;
@@ -948,7 +1106,6 @@ function updateSwirlAnimation(audioTime) {
       }
     });
   } else {
-    // Swirl active - animate based on progress
     const easedProgress = swirlProgress * swirlProgress * (3 - 2 * swirlProgress);
     
     const swirlAmount = THREE.MathUtils.lerp(2.5, 6.0, easedProgress);
@@ -1049,88 +1206,10 @@ function updateHeadLookAtOptimized(camera, deltaTime) {
   headBone.quaternion.slerp(animationCache.blendedQuaternion, smoothingFactor);
 }
 
-function setupPostProcessing() {
-  composer = new EffectComposer(renderer);
-
-  const taaRenderPass = new TAARenderPass(scene, camera);
-  taaRenderPass.unbiased = false;
-  taaRenderPass.sampleLevel = 1;
-  composer.addPass(taaRenderPass);
-  
-  bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    config.bloom.strength, 
-    config.bloom.radius, 
-    config.bloom.threshold
-  );
-  bloomPass.renderTargetsHorizontal.forEach(target => {
-    target.texture.minFilter = THREE.LinearFilter;
-    target.texture.magFilter = THREE.LinearFilter;
-  });
-  bloomPass.renderTargetsVertical.forEach(target => {
-    target.texture.minFilter = THREE.LinearFilter;
-    target.texture.magFilter = THREE.LinearFilter;
-  });
-  
-  chromaticAberrationPass = new ChromaticAberrationPass(config.chromaticAberration.strength);
-  chromaticAberrationPass.update(renderer, window.innerWidth, window.innerHeight);
-
-  depthBlurPass = new DepthDrivenBlurPass(scene, camera, 1.0);
-  depthBlurPass.excludeLayer(LAYERS.DOFIGNORE);
-
-  const gamma = new ShaderPass(GammaCorrectionShader);
-
-  composer.addPass(depthBlurPass);
-  composer.addPass(chromaticAberrationPass);
-  composer.addPass(bloomPass); 
-  composer.addPass(gamma);
-}
-
-function setupLights() {
-  scene.add(new THREE.DirectionalLight(0x111111, 5));
-  
-  spotlight = new THREE.SpotLight(0xff0000, 5);
-  Object.assign(spotlight, { angle: Math.PI / 12, penumbra: 0.7, decay: 1, distance: 100 });
-  spotlight.position.set(0, 2, 0);
-  
-  const spotlightTarget = new THREE.Object3D();
-  spotlightTarget.position.set(0, 0, -100);
-  scene.add(spotlightTarget);
-  spotlight.target = spotlightTarget;
-  scene.add(spotlight);
-}
-
-function onWindowResize() {
-  if (camera) {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-  }
-
-  const pixelRatio = window.isMobile ? 0.5 : 1;
-  renderer.setPixelRatio(pixelRatio);
-
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  composer?.setSize(window.innerWidth, window.innerHeight);
-
-  if (rive) {
-    rive.resizeDrawingSurfaceToCanvas();
-    
-    if (width) {
-      width.value = window.innerWidth; 
-    }
-  }
-
-  starNestMaterials.forEach(material => {
-    if (material.updateResolution) {
-      material.updateResolution(window.innerWidth, window.innerHeight);
-    }
-  });
-}
-
 function handleAnimationTransitions(audioTime, deltaTime) {
   if (!faceUpAnimation || !walkAnimation) return;
   
-  const shouldBeInFaceUp = audioTime >= transitionTime;
+  const shouldBeInFaceUp = audioTime >= TIMING.character.walkToFaceUp.start;
   
   if (!faceUpAnimation.userData) {
     faceUpAnimation.userData = { lastAudioTime: 0 };
@@ -1150,7 +1229,7 @@ function handleAnimationTransitions(audioTime, deltaTime) {
         faceUpAnimation.play();
         faceUpAnimation.setEffectiveWeight(1.0);
         
-        const animTime = (audioTime - transitionTime) * faceUpAnimation.timeScale;
+        const animTime = (audioTime - TIMING.character.walkToFaceUp.start) * faceUpAnimation.timeScale;
         if (animTime > 0) {
           faceUpAnimation.time = Math.min(animTime, faceUpAnimation.getClip().duration);
         }
@@ -1167,7 +1246,10 @@ function handleAnimationTransitions(audioTime, deltaTime) {
       faceUpAnimation.play();
       faceUpAnimation.setEffectiveWeight(0.0);
     } else if (isInTransition) {
-      const transitionProgress = Math.min((audioTime - transitionStartTime) / transitionDuration, 1.0);
+      const transitionProgress = Math.min(
+        (audioTime - transitionStartTime) / TIMING.character.walkToFaceUp.duration, 
+        1.0
+      );
       const easedProgress = 0.5 - 0.5 * Math.cos(transitionProgress * Math.PI);
       
       walkAnimation.setEffectiveWeight(1.0 - easedProgress);
@@ -1197,6 +1279,9 @@ function handleAnimationTransitions(audioTime, deltaTime) {
   }
 }
 
+// ============================================================================
+// MAIN ANIMATION LOOP
+// ============================================================================
 function animate(time) {
   if (!isAnimating) return;
   animationId = requestAnimationFrame(animate);
@@ -1208,49 +1293,56 @@ function animate(time) {
   
   const audioTime = AudioController.getCurrentTime();
   
-
   updateLyrics(audioTime);
-
-
   updateGlitch(audioTime);
-
-
-  // Update state machine
+  
   stateMachine.update(audioTime);
   
-  // Always running updates
   gltfMixer?.update(deltaTime);
-
   handleAnimationTransitions(audioTime, deltaTime);
   updateHeadLookAtOptimized(camera, deltaTime);
   cursorPlane.update(camera, deltaTime);
   
   // State-dependent updates
-  
-  // 1. Star shader
   if (stateMachine.isStarShaderActive()) {
     updateStarNestMaterials(starNestMaterials, deltaTime, mouseX, mouseY, audioTime);
   }
   
-  // 2. Sky shader
   if (stateMachine.isSkyShaderActive()) {
     updateCloudUniforms(skyPlane.material, audioTime * 0.03, window.innerWidth, window.innerHeight);
+    
+    // Update sky colors based on state
+    if (skyPlane && skyPlane.material && skyPlane.material.uniforms) {
+      let targetColors;
+      
+      if (stateMachine.isInState('MINIMAL')) {
+        targetColors = TIMING.skyColors.starStart;
+      } else {
+        targetColors = TIMING.skyColors.idle;
+      }
+      
+      // Smooth color transition
+      const lerpFactor = deltaTime * 0.1; // Adjust for transition speed
+      
+      skyPlane.material.uniforms.cloudColor.value.lerp(targetColors.cloudColor, lerpFactor);
+      skyPlane.material.uniforms.skyTopColor.value.lerp(targetColors.skyTopColor, lerpFactor);
+      skyPlane.material.uniforms.skyBottomColor.value.lerp(targetColors.skyBottomColor, lerpFactor);
+    }
   }
   
-  // 3. Vegetation
   if (stateMachine.isVegetationActive()) {
     const vegetationCounts = VegetationManager.updateVegetation(scene, 0.5 * (deltaTime * 60));
     AudioController.update(deltaTime, vegetationCounts.trees);
   }
   
-  // 4. Swirl animation (controlled by state machine)
   if (stateMachine.isSwirlAnimActive()) {
     updateSwirlAnimation(audioTime);
   }
   
-  // 5. Camera animations
+  // Camera animations using centralized timing
   if (stateMachine.isFirstCameraAnimActive()) {
-    const progress = Math.max(0, Math.min(1, (audioTime - animStartTime) / (animEndTime - animStartTime)));
+    const { start, end, startPos, endPos, startRot, endRot, startFOV, endFOV } = TIMING.camera.first;
+    const progress = Math.max(0, Math.min(1, (audioTime - start) / (end - start)));
     const easedProgress = progress * progress * (3 - 2 * progress);
     
     baseCameraPos.lerpVectors(startPos, endPos, easedProgress);
@@ -1265,36 +1357,37 @@ function animate(time) {
     camera.fov = THREE.MathUtils.lerp(startFOV, endFOV, easedProgress);
     camera.updateProjectionMatrix();
   } else if (stateMachine.isSecondCameraAnimActive()) {
-    const progress = Math.max(0, Math.min(1, (audioTime - animStartTime2) / (animEndTime2 - animStartTime2)));
+    const { start, end, startPos, endPos, startRot, endRot, startFOV, endFOV } = TIMING.camera.second;
+    const progress = Math.max(0, Math.min(1, (audioTime - start) / (end - start)));
     const easedProgress = progress * progress * (3 - 2 * progress);
     
-    baseCameraPos.lerpVectors(startPos2, endPos2, easedProgress);
-    baseCameraRot.x = THREE.MathUtils.lerp(startRot2.x, endRot2.x, easedProgress);
-    baseCameraRot.y = THREE.MathUtils.lerp(startRot2.y, endRot2.y, easedProgress);
-    baseCameraRot.z = THREE.MathUtils.lerp(startRot2.z, endRot2.z, easedProgress);
+    baseCameraPos.lerpVectors(startPos, endPos, easedProgress);
+    baseCameraRot.x = THREE.MathUtils.lerp(startRot.x, endRot.x, easedProgress);
+    baseCameraRot.y = THREE.MathUtils.lerp(startRot.y, endRot.y, easedProgress);
+    baseCameraRot.z = THREE.MathUtils.lerp(startRot.z, endRot.z, easedProgress);
     
-    camera.fov = THREE.MathUtils.lerp(startFOV2, endFOV2, easedProgress);
+    camera.fov = THREE.MathUtils.lerp(startFOV, endFOV, easedProgress);
     camera.updateProjectionMatrix();
   } else {
     // Set static camera position based on state
     if (stateMachine.isInState('IDLE')) {
-      baseCameraPos.copy(startPos);
-      baseCameraRot.copy(startRot);
-      camera.fov = startFOV;
+      baseCameraPos.copy(TIMING.camera.first.startPos);
+      baseCameraRot.copy(TIMING.camera.first.startRot);
+      camera.fov = TIMING.camera.first.startFOV;
       scene.fog.near = config.fog.start.near;
       scene.fog.far = config.fog.start.far;
       scene.fog.color.copy(fogStartColor);
     } else if (stateMachine.isInState('MINIMAL')) {
-      baseCameraPos.copy(endPos);
-      baseCameraRot.copy(endRot);
-      camera.fov = endFOV;
+      baseCameraPos.copy(TIMING.camera.first.endPos);
+      baseCameraRot.copy(TIMING.camera.first.endRot);
+      camera.fov = TIMING.camera.first.endFOV;
       scene.fog.near = config.fog.end.near;
       scene.fog.far = config.fog.end.far;
       scene.fog.color.copy(fogEndColor);
-    } else if (stateMachine.isInState('FINAL') && audioTime > animEndTime2) {
-      baseCameraPos.copy(endPos2);
-      baseCameraRot.copy(endRot2);
-      camera.fov = endFOV2;
+    } else if (stateMachine.isInState('FINAL') && audioTime > TIMING.camera.second.end) {
+      baseCameraPos.copy(TIMING.camera.second.endPos);
+      baseCameraRot.copy(TIMING.camera.second.endRot);
+      camera.fov = TIMING.camera.second.endFOV;
     }
     camera.updateProjectionMatrix();
   }
@@ -1325,15 +1418,12 @@ function animate(time) {
     const isFinished = audioTime >= audioDuration - 0.1;
     
     if (isFinished && isAnimating) {
-      // Song just finished
       isAnimating = false;
 
-      // Set finished to true
       if (finishedInput) {
         finishedInput.value = true;
       }
       
-      // Set playing to false immediately when song finishes
       if (playingInput) {
         playingInput.value = false;
       }
@@ -1341,21 +1431,17 @@ function animate(time) {
       resetLyrics();
       resetGlitch();
       
-      // Stop the animation loop
       if (animationId) {
         cancelAnimationFrame(animationId);
         animationId = null;
       }
       
-      // Reset to beginning for next play
       AudioController.reset();
       
-      // Update stopped state in Rive
       if (stoppedInput) {
         stoppedInput.value = true;
       }
       
-      // Update controls
       if (simpleControls) {
         simpleControls.updatePlayButton(false);
       }
@@ -1364,72 +1450,42 @@ function animate(time) {
     }
   }
 
-  // Render
   if (scene && camera) composer.render();
 }
 
-function startAnimation() {
-  if (isAnimating) {
-    return;
+// ============================================================================
+// RESIZE HANDLER
+// ============================================================================
+function onWindowResize() {
+  if (camera) {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
   }
-  
-  // Check if we're at the end
-  const audioTime = AudioController.getCurrentTime();
-  const audioDuration = AudioController.getAudioDuration();
-  
-  if (audioDuration > 0 && audioTime >= audioDuration - 0.1) {
-    // We're at the end, reset to beginning
-    AudioController.reset();
-    resetLyrics();
-  }
-  
-  AudioController.startAudio();
-  lastTime = null;
-  isAnimating = true;
 
-  
-  
-  if (stoppedInput) {
-    stoppedInput.value = false;
+  const pixelRatio = window.isMobile ? 0.5 : 1;
+  renderer.setPixelRatio(pixelRatio);
+
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer?.setSize(window.innerWidth, window.innerHeight);
+
+  if (rive) {
+    rive.resizeDrawingSurfaceToCanvas();
+    
+    if (width) {
+      width.value = window.innerWidth; 
+    }
   }
-  
-  // Update controls
-  if (simpleControls) {
-    simpleControls.updatePlayButton(true);
-  }
-  
-  animate(performance.now());
+
+  starNestMaterials.forEach(material => {
+    if (material.updateResolution) {
+      material.updateResolution(window.innerWidth, window.innerHeight);
+    }
+  });
 }
 
-function pauseAnimation() {
-  if (!isAnimating) {
-    return;
-  }
-  
-  AudioController.pauseAudio();
-  if (animationId) {
-    cancelAnimationFrame(animationId);
-    animationId = null;
-  }
-  isAnimating = false;
-  
-  if (stoppedInput) {
-    stoppedInput.value = true;
-  }
-  
-  // Update controls
-  if (simpleControls) {
-    simpleControls.updatePlayButton(false);
-  }
-}
-
-function resetGlitch() {
-  if (glitch) {
-    glitch.value = false;
-  }
-}
-
-// Initialize after delay
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
 setTimeout(() => {
   init();
 }, 1000);
