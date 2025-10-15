@@ -554,11 +554,8 @@ async function loadRiveOverlay() {
             }
 
             startAnimation();
-            if (simpleControls) {
-              setTimeout(() => {
-                simpleControls.show();
-              }, 2150);
-            }
+
+          
           } else if (!playingInput.value && isAnimating) {
             pauseAnimation();
           }
@@ -974,12 +971,20 @@ function startAnimation() {
   }
   
    if (simpleControls) {
-    setInterval(() => {
+    if (!repeat) {
+    setTimeout(() => {
 
     simpleControls.updatePlayButton(true);
     simpleControls.show();
 
+    repeat = true;
+
     }, 2500);
+  }else {
+    
+    simpleControls.updatePlayButton(true);
+    simpleControls.show();
+  }
   }
 
   window.dispatchEvent(new CustomEvent('animationStateChange', { detail: { isPlaying: true }}));
@@ -1492,6 +1497,7 @@ if (audioDuration > 0) {
     resetGlitch();
 
      if (simpleControls) {
+
         simpleControls.hide();
         simpleControls.resetLyrics();
       }
