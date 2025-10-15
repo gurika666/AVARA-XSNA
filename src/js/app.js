@@ -291,6 +291,7 @@ let progressInterval = null;
 let starNestMaterials = new Map();
 let lyrics,lyricsOnInput;
 let lastLyricsOnValue = true;
+let repeat = false;
 
 // Three.js globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass;
@@ -543,11 +544,15 @@ async function loadRiveOverlay() {
 
       
       if (playingInput) {
+
+   
         setInterval(() => {
+          
           if (playingInput.value && !isAnimating && isSetupComplete) {
             if (finishedInput) {
               finishedInput.value = false;
             }
+
             startAnimation();
             if (simpleControls) {
               setTimeout(() => {
@@ -558,7 +563,10 @@ async function loadRiveOverlay() {
             pauseAnimation();
           }
         }, 100);
+
       }
+
+  
       
       rive.on(EventType.RiveEvent || 'spotifyevent', (event) => {
         if (event.data.name === 'spotify') {
@@ -966,13 +974,17 @@ function startAnimation() {
   }
   
    if (simpleControls) {
+    setInterval(() => {
+
     simpleControls.updatePlayButton(true);
     simpleControls.show();
+
+    }, 2500);
   }
 
   window.dispatchEvent(new CustomEvent('animationStateChange', { detail: { isPlaying: true }}));
 
-  
+
   animate(performance.now());
 }
 
@@ -1469,6 +1481,7 @@ if (audioDuration > 0) {
     }
     
     if (playingInput) {
+
       playingInput.value = false;
     }
 
