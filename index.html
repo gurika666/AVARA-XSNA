@@ -3,11 +3,43 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>xsna</title>
+<title>XSNA - Interactive Music Visualizer</title>
 
+<!-- CRITICAL: Open Graph Meta Tags MUST be in the HEAD -->
+<!-- Facebook Open Graph -->
+<meta property="og:title" content="XSNA - Interactive Music Visualizer" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://xsna.life/" />
+<meta property="og:image" content="https://xsna.life/preview.jpg" />
+<meta property="og:image:secure_url" content="https://xsna.life/preview.jpg" />
+<meta property="og:image:type" content="image/jpeg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:description" content="Immersive 3D music experience with real-time visual effects by AVARA" />
+<meta property="og:site_name" content="XSNA" />
+<meta property="og:locale" content="en_US" />
+
+<!-- Twitter Cards -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@xsna" />
+<meta name="twitter:title" content="XSNA - Interactive Music Visualizer" />
+<meta name="twitter:description" content="Immersive 3D music experience with real-time visual effects" />
+<meta name="twitter:image" content="https://xsna.life/preview.jpg" />
+<meta name="twitter:image:alt" content="XSNA Music Visualizer Preview" />
+
+<!-- Standard Meta Tags -->
+<meta name="description" content="Experience XSNA - An immersive 3D music visualization with interactive controls and stunning visual effects by AVARA" />
+<meta name="keywords" content="XSNA, music visualizer, WebGL, Three.js, 3D graphics, interactive music, audio visualization, AVARA" />
+<meta name="author" content="AVARA" />
+<meta name="robots" content="index, follow" />
+
+<!-- Canonical URL -->
+<link rel="canonical" href="https://xsna.life/" />
+
+<!-- Favicon -->
+<link rel="icon" type="image/x-icon" href="/favicon.ico" />
 
 <style>
-
 body {
   margin: 0;
   overflow: hidden;
@@ -81,8 +113,6 @@ body.playing {
   pointer-events: none;
 }
 
-
-
 @keyframes scanlines-move {
   0% {
     background-position: 0 0;
@@ -112,8 +142,9 @@ window.addEventListener('animationStateChange', function(event) {
     console.log('Animation stopped - background changed to blue');
   }
 });
-
-
 </script>
+
+<!-- Vite will inject your app.js here during build -->
+<script type="module" src="/src/js/app.js"></script>
 </body>
 </html>
