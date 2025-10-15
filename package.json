@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@prerenderer/renderer-puppeteer": "^1.2.4",
+    "@prerenderer/rollup-plugin": "^0.3.12",
     "@rollup/plugin-alias": "^4.0.3",
     "@rollup/plugin-dsv": "^3.0.2",
     "gsap": "^3.13.0",

@@ -1,63 +1,270 @@
 import { defineConfig } from "vite";
-import {resolve} from "path";
+import { resolve } from "path";
+import { createHtmlPlugin } from 'vite-plugin-html';
 
-import { createHtmlPlugin } from 'vite-plugin-html'
-
-export default defineConfig ({
-    base: process.env.NODE_ENV == 'production' ? '' : '/',
-    root: './',
-    publicDir: 'public',
-    plugins: [
-        createHtmlPlugin({
-          minify: true,
-          /**
-           * After writing entry here, you will not need to add script tags in `index.html`, the original tags need to be deleted
-           * @default src/js/main.js
-           */
-          entry: 'src/js/app.js',
-          /**
-           * If you want to store `index.html` in the specified folder, you can modify it, otherwise no configuration is required
-           * @default index.html
-           */
-          template: 'index.html',
-    
-          /**
-           * Data that needs to be injected into the index.html ejs template
-           */
-          inject: {
-            data: {
-              title: 'index',
-              injectScript: `<script src="./inject.js"></script>`,
-            },
-            tags: [
-              {
-                injectTo: 'body-prepend',
-                tag: 'div',
-                attrs: {
-                  id: 'tag',
-                },
-              },
-            ],
-          },
-        }),
-      ],
-    resolve: {
-        alias: {
-            "~": resolve(__dirname, "./src"),
-            "@": resolve(__dirname, "./public"),
+export default defineConfig({
+  base: process.env.NODE_ENV == 'production' ? '' : '/',
+  root: './',
+  publicDir: 'public',
+  
+  plugins: [
+    createHtmlPlugin({
+      minify: true,
+      entry: 'src/js/app.js',
+      template: 'index.html',
+      
+      inject: {
+        data: {
+          title: 'XSNA - Interactive Music Experience',
+          injectScript: `<script src="./inject.js"></script>`,
         },
+        tags: [
+          // SEO Meta Tags
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'description',
+              content: 'Experience XSNA - An immersive 3D music visualization with interactive controls and stunning visual effects'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'keywords',
+              content: 'XSNA, music visualizer, WebGL, Three.js, 3D graphics, interactive music, audio visualization'
+            }
+          },
+          
+          // Open Graph tags
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:title',
+              content: 'XSNA - Interactive Music Visualizer'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:description',
+              content: 'Immersive 3D music experience with real-time visual effects'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:image',
+              content: '/preview.jpg'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:url',
+              content: 'https://xsna.life'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:type',
+              content: 'website'
+            }
+          },
+          
+          // Twitter Card tags
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'twitter:card',
+              content: 'summary_large_image'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'twitter:title',
+              content: 'XSNA'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'twitter:description',
+              content: 'Immersive 3D music visualization experience'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'twitter:image',
+              content: '/preview.jpg'
+            }
+          },
+          
+          // Structured Data
+          {
+            injectTo: 'head',
+            tag: 'script',
+            attrs: {
+              type: 'application/ld+json'
+            },
+            children: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebApplication",
+              "name": "XSNA",
+              "description": "Interactive 3D music visualizer with WebGL",
+              "applicationCategory": "MultimediaApplication",
+              "operatingSystem": "Any",
+              "browserRequirements": "Requires JavaScript. Requires HTML5.",
+              "author": {
+                "@type": "Organization",
+                "name": "AVARA"
+              }
+            })
+          },
+          
+          // Preload critical resources
+          {
+            injectTo: 'head',
+            tag: 'link',
+            attrs: {
+              rel: 'preload',
+              href: '/fonts/Monarch.woff2',
+              as: 'font',
+              type: 'font/woff2',
+              crossorigin: 'anonymous'
+            }
+          },
+          
+          // Hidden SEO content for crawlers
+          {
+            injectTo: 'body-prepend',
+            tag: 'div',
+            attrs: {
+              id: 'seo-content',
+              style: 'position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden;'
+            },
+            children: `
+              <h1>XSNA Music Visualizer</h1>
+              <h2>Interactive 3D Audio Visualization Experience</h2>
+              <p>Experience immersive music with real-time 3D graphics, particle effects, and interactive controls.</p>
+            `
+          },
+          
+          // The original body-prepend div from your config
+          {
+            injectTo: 'body-prepend',
+            tag: 'div',
+            attrs: {
+              id: 'tag',
+            },
+          },
+        ],
+      },
+    }),
+  ],
+  
+  resolve: {
+    alias: {
+      "~": resolve(__dirname, "./src"),
+      "@": resolve(__dirname, "./public"),
     },
-    server: {
-        host: '0.0.0.0',
-        port: 5000,
-        open: false, 
-        cors: true, 
+  },
+  
+  server: {
+    host: '0.0.0.0',
+    port: 5000,
+    open: false,
+    cors: true,
+  },
+  
+  preview: {
+    port: 8080
+  },
+  
+  build: {
+    outDir: 'dist',
+    chunkSizeWarningLimit: 1600,
+    
+    // Optimize chunks for better loading
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // Three.js core
+          if (id.includes('three') && !id.includes('examples')) {
+            return 'three-core';
+          }
+          // Three.js examples (loaders, post-processing)
+          if (id.includes('three/examples')) {
+            return 'three-extras';
+          }
+          // Rive animations
+          if (id.includes('@rive-app')) {
+            return 'rive';
+          }
+          // Media libraries
+          if (id.includes('@mediapipe')) {
+            return 'mediapipe';
+          }
+          // Other vendor libraries
+          if (id.includes('node_modules') && 
+              !id.includes('three') && 
+              !id.includes('@rive-app') && 
+              !id.includes('@mediapipe')) {
+            return 'vendor';
+          }
+        },
+        // Asset file naming
+        assetFileNames: (assetInfo) => {
+          const info = assetInfo.name.split('.');
+          const ext = info[info.length - 1];
+          if (/png|jpe?g|svg|gif|tiff|bmp|ico/i.test(ext)) {
+            return `assets/images/[name]-[hash][extname]`;
+          } else if (/woff|woff2|ttf|otf|eot/i.test(ext)) {
+            return `assets/fonts/[name]-[hash][extname]`;
+          }
+          return `assets/[name]-[hash][extname]`;
+        },
+        chunkFileNames: 'js/[name]-[hash].js',
+        entryFileNames: 'js/[name]-[hash].js',
+      }
     },
-    preview: {
-      port: 8080
+    
+    // Minification options
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: process.env.NODE_ENV === 'production',
+        drop_debugger: true
+      }
     },
-      build: { 
-        outDir: 'dist',
-        chunkSizeWarningLimit: 1600, 
-    },
-})
+    
+    // Generate source maps only for development
+    sourcemap: process.env.NODE_ENV !== 'production',
+  },
+  
+  // Optimize dependencies
+  optimizeDeps: {
+    include: [
+      'three',
+      '@rive-app/webgl2',
+      '@rive-app/canvas',
+      'gsap'
+    ],
+    exclude: [
+      '@mediapipe/hands' // Often causes issues with optimization
+    ]
+  }
+});
