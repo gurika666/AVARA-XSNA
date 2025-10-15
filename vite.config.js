@@ -2,6 +2,9 @@ import { defineConfig } from "vite";
 import { resolve } from "path";
 import { createHtmlPlugin } from 'vite-plugin-html';
 
+// Configure your site URL here
+const SITE_URL = 'https://xsna.life'; // Update this to your actual domain
+
 export default defineConfig({
   base: process.env.NODE_ENV == 'production' ? '' : '/',
   root: './',
@@ -19,6 +22,23 @@ export default defineConfig({
           injectScript: `<script src="./inject.js"></script>`,
         },
         tags: [
+          // Basic Meta Tags
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              charset: 'UTF-8'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'viewport',
+              content: 'width=device-width, initial-scale=1.0'
+            }
+          },
+          
           // SEO Meta Tags
           {
             injectTo: 'head-prepend',
@@ -33,11 +53,19 @@ export default defineConfig({
             tag: 'meta',
             attrs: {
               name: 'keywords',
-              content: 'XSNA, music visualizer, WebGL, Three.js, 3D graphics, interactive music, audio visualization'
+              content: 'XSNA, music visualizer, WebGL, Three.js, 3D graphics, interactive music, audio visualization, AVARA'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'author',
+              content: 'AVARA'
             }
           },
           
-          // Open Graph tags
+          // Open Graph tags (Facebook, LinkedIn, etc.)
           {
             injectTo: 'head-prepend',
             tag: 'meta',
@@ -59,7 +87,31 @@ export default defineConfig({
             tag: 'meta',
             attrs: {
               property: 'og:image',
-              content: '/preview.jpg'
+              content: `${SITE_URL}/preview.jpg` // Absolute URL to your preview image
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:image:width',
+              content: '1200'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:image:height',
+              content: '630'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:image:alt',
+              content: 'XSNA - Interactive 3D Music Visualizer Preview'
             }
           },
           {
@@ -67,7 +119,7 @@ export default defineConfig({
             tag: 'meta',
             attrs: {
               property: 'og:url',
-              content: 'https://xsna.life'
+              content: SITE_URL
             }
           },
           {
@@ -76,6 +128,22 @@ export default defineConfig({
             attrs: {
               property: 'og:type',
               content: 'website'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:site_name',
+              content: 'XSNA'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              property: 'og:locale',
+              content: 'en_US'
             }
           },
           
@@ -93,7 +161,7 @@ export default defineConfig({
             tag: 'meta',
             attrs: {
               name: 'twitter:title',
-              content: 'XSNA'
+              content: 'XSNA - Interactive Music Visualizer'
             }
           },
           {
@@ -109,11 +177,37 @@ export default defineConfig({
             tag: 'meta',
             attrs: {
               name: 'twitter:image',
-              content: '/preview.jpg'
+              content: `${SITE_URL}/preview.jpg`
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'twitter:image:alt',
+              content: 'XSNA Music Visualizer Preview'
             }
           },
           
-          // Structured Data
+          // Additional meta tags for better SEO
+          {
+            injectTo: 'head-prepend',
+            tag: 'meta',
+            attrs: {
+              name: 'robots',
+              content: 'index, follow'
+            }
+          },
+          {
+            injectTo: 'head-prepend',
+            tag: 'link',
+            attrs: {
+              rel: 'canonical',
+              href: SITE_URL
+            }
+          },
+          
+          // Structured Data (JSON-LD)
           {
             injectTo: 'head',
             tag: 'script',
@@ -128,9 +222,17 @@ export default defineConfig({
               "applicationCategory": "MultimediaApplication",
               "operatingSystem": "Any",
               "browserRequirements": "Requires JavaScript. Requires HTML5.",
+              "url": SITE_URL,
+              "image": `${SITE_URL}/preview.jpg`,
               "author": {
                 "@type": "Organization",
-                "name": "AVARA"
+                "name": "AVARA",
+                "url": SITE_URL
+              },
+              "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD"
               }
             })
           },
@@ -147,6 +249,25 @@ export default defineConfig({
               crossorigin: 'anonymous'
             }
           },
+          {
+            injectTo: 'head',
+            tag: 'link',
+            attrs: {
+              rel: 'preconnect',
+              href: 'https://cdnjs.cloudflare.com'
+            }
+          },
+          
+          // Favicon
+          {
+            injectTo: 'head',
+            tag: 'link',
+            attrs: {
+              rel: 'icon',
+              type: 'image/x-icon',
+              href: '/favicon.ico'
+            }
+          },
           
           // Hidden SEO content for crawlers
           {
@@ -160,6 +281,7 @@ export default defineConfig({
               <h1>XSNA Music Visualizer</h1>
               <h2>Interactive 3D Audio Visualization Experience</h2>
               <p>Experience immersive music with real-time 3D graphics, particle effects, and interactive controls.</p>
+              <p>Created by AVARA - Push play to begin your journey through sound and vision.</p>
             `
           },
           
