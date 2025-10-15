@@ -289,7 +289,8 @@ let playingInput;
 let currentProgress = 0;
 let progressInterval = null;
 let starNestMaterials = new Map();
-let lyrics;
+let lyrics,lyricsOnInput;
+let lastLyricsOnValue = true;
 
 // Three.js globals
 let camera, scene, renderer, composer, bloomPass, chromaticAberrationPass;
@@ -372,61 +373,61 @@ const resources = {
 // Lyrics data
 const lyricsData = [
 
-  { time: 26.0, text: "Tvalebs adevs nami" }, 
-  { time: 29.0, text: "Zgvaa dzaan wynari" },
-  { time: 32.0, text: "Caze fantavs elvebs" },
-  { time: 35.0, text: "Dauokebeli brazi" },
-  { time: 38.0, text: "Axals arafers ar getyvi" },
-  { time: 40.5, text: "Rasac akamde shen" },
-  { time: 43.0, text: "Ebrdzvi!" },
-  { time: 45.0, text: "Dalewili dzvlebit" },
+  { time: 26.0, text: "თვალებს ადევს ნამი" }, 
+  { time: 29.0, text: "ზღვაა ძაან წყნარი" },
+  { time: 32.0, text: "ცაზე ფანტავს ელვებს" },
+  { time: 35.0, text: "დაუოკებელი ბრაზი" },
+  { time: 38.0, text: "ახალს არაფერს არ გეტყვი" },
+  { time: 40.5, text: "რასაც აქამდე შენ ებრძვი" },
+  { time: 43.0, text: "ებრძვი!" },
+  { time: 45.0, text: "დალეწილი ძვლებით" },
   { time: 48.0, text: "" },
-  { time: 50.0, text: "Sadac ar unda iyo" },
-  { time: 53.5, text: "Shenamde mosasvleli" },
-  { time: 56.0, text: "Gza minda viyo" },
+  { time: 50.0, text: "სადაც არ უნდა იყო" },
+  { time: 53.5, text: "შენამდე მოსასვლელი" },
+  { time: 56.0, text: "გზა მინდა ვიყო" },
   { time: 60.0, text: "" },
-  { time: 62.0, text: "Razec ar unda gelavde" },
-  { time: 66.0, text: "Me shentvis movlenili" },
-  { time: 68.0, text: "XSNA minda viyo" },
+  { time: 62.0, text: "რაზეც არ უნდა ღელავდე" },
+  { time: 66.0, text: "მე შენთვის მოვლენილი" },
+  { time: 68.0, text: "ხსნა მინდა ვიყო" },
   { time: 71.0, text: "" },
-  { time: 72.0, text: "Rasac ar unda fiqrobde" },
-  { time: 76.0, text: "Razec ar unda gelavde" },
-  { time: 79.0, text: "Rasac ar unda fiqrobde" },
-  { time: 84.0, text: "Me sheni XSNA minda viyo!" },
-  { time: 88.0, text: "Rasac ar unda fiqrobde" },
-  { time: 91.0, text: "Razec ar unda gelavde" },
-  { time: 96.0, text: "Me sheni XSNA minda viyo!" },
+  { time: 72.0, text: "რასაც არ უნდა ფიქრობდე" },
+  { time: 76.0, text: "რაზეც არ უნდა ღელავდე" },
+  { time: 79.0, text: "რასაც არ უნდა ფიქრობდე" },
+  { time: 84.0, text: "მე შენი ხსნა მინდა ვიყო!" },
+  { time: 88.0, text: "რასაც არ უნდა ფიქრობდე" },
+  { time: 91.0, text: "რაზეც არ უნდა ღელავდე" },
+  { time: 96.0, text: "მე შენი ხსნა მინდა ვიყო!" },
   { time: 100.0, text: "" },
-  { time: 109.0, text: "Me sheni XSNA minda viyo" },
+  { time: 109.0, text: "მე შენი ხსნა მინდა ვიყო!" },
   { time: 112.0, text: "" },
-  { time: 121.0, text: "Me sheni XSNA minda viyo" },
-  { time: 124.0, text: "Macade Macade Macade Macade" },
-  { time: 126.0, text: "Uceb getyvi" },
-  { time: 127.5, text: "Usmine Usmine Usmine" },
-  { time: 129.0, text: "Usityvod rom ver xvdebi" },
-  { time: 131.0, text: "Gadade Gadade Gadade" },
-  { time: 133.0, text: "Rasac shvrebi" },
-  { time: 134.5, text: "Acade Acade Acade" },
-  { time: 136.0, text: "Samyaro tviton getyvis" },
-  { time: 137.5, text: "Azrebi Ambebi Bedi" },
-  { time: 138.5, text: "Momavlis nostalgiebi" },
-  { time: 140.0, text: "Ulevi Ulevi" },
-  { time: 141.0, text: "Usasrulobidan wamosuli" },
-  { time: 142.0, text: "Erevi Erevi" },
-  { time: 143.0, text: "Everytime shen titqos emalebi" },
-  { time: 146.5, text: "Acade Acade Acade" },
-  { time: 148.5, text: "Samyaro tviton getyvis" },
-  { time: 150.0, text: "Sadac ar unda iyo" },
-  { time: 153.0, text: "Shenamde mosasvleli gza minda viyo" },
+  { time: 121.0, text: "მე შენი ხსნა მინდა ვიყო!" },
+  { time: 124.0, text: "მაცადე მაცადე მაცადე მაცადე" },
+  { time: 126.0, text: "უცებ გეტყვი" },
+  { time: 127.5, text: "უსმინე უსმინე უსმინე" },
+  { time: 129.0, text: "უსიტყვიოდ რომ ვერ ხვდები" },
+  { time: 131.0, text: "გადადე გადადე გადადე" },
+  { time: 133.0, text: "რასაც შვრები" },
+  { time: 134.5, text: "აცადე აცადე აცადე" },
+  { time: 136.0, text: "სამყარო თვითონ გეტყვის" },
+  { time: 137.5, text: "აზრები ამბები ბედი" },
+  { time: 138.5, text: "მომავლის ნოსტალგიები" },
+  { time: 140.0, text: "ულევი ულევი" },
+  { time: 141.0, text: "უსასრულობიდან წამოსული" },
+  { time: 142.0, text: "ერევი ერევი" },
+  { time: 143.0, text: "Everytime შენ თითქოს ემალები" },
+  { time: 146.5, text: "აცადე აცადე აცადე" },
+  { time: 148.5, text: "სამყარო თვითონ გეტყვის" },
+  { time: 150.0, text: "სადაც არ უნდა იყო" },
+  { time: 153.0, text: "სენამდე მოსასვლელი გზა მინდა ვიყო" },
   { time: 156.0, text: "" },
-  { time: 159.0, text: "Rasac ar unda fiqrobde" },
-  { time: 162.0, text: "razec ar unda gelavde" },
-  { time: 165.0, text: "Rasac ar unda fiqrobde" },
+  { time: 159.0, text: "რასაც არ უნდა ფიქრობდე" },
+  { time: 162.0, text: "რაზეც არ უნდა ღელავდე" },
+  { time: 165.0, text: "რასაც არ უნდა ფიქრობდე" },
   { time: 168.0, text: "" },
-  { time: 170.5, text: "Me sheni XSNA minda viyo" },
-  { time: 183.5, text: "Me sheni XSNA minda viyo" },
+  { time: 170.5, text: "მე შენი ხსნა მინდა ვიყო!" },
+  { time: 183.5, text: "მე შენი ხსნა მინდა ვიყო!" },
   { time: 187.0, text: "" },
-  { time: 195.0, text: "Me sheni XSNA minda viyo" },
+  { time: 195.0, text: "მე შენი ხსნა მინდა ვიყო!" },
   { time: 200.0, text: "" },
 ];
 
@@ -453,12 +454,13 @@ async function init() {
   
   AudioController.init({});
   
-  simpleControls = new SimpleControls();
+ simpleControls = new SimpleControls();
   simpleControls.init(
     () => togglePlayPause(),
     (seekTime) => {
       AudioController.seekTo(seekTime);
-    }
+    },
+    lyricsData  // Pass the lyrics data here
   );
   simpleControls.hide();
   
@@ -531,9 +533,14 @@ async function loadRiveOverlay() {
       lyrics = viewmodel.string('lyrics');
       glitch = viewmodel.boolean('glitch');
       finishedInput = viewmodel.boolean('finished');
+      lyricsOnInput = viewmodel.boolean('lyricson');
       
       stoppedInput = inputs.find(i => i.name === 'stopped');
       loadedInput = inputs.find(i => i.name === 'Loaded');
+
+
+      
+
       
       if (playingInput) {
         setInterval(() => {
@@ -593,33 +600,38 @@ function updateGlitch(audioTime) {
   glitch.value = (cycleTime >= 0 && cycleTime < 2);
 }
 
-function updateLyrics(audioTime) {
-  if (!lyrics || !lyricsData.length) return;
+// function updateLyrics(audioTime) {
+//   if (!lyrics || !lyricsData.length) return;
   
-  let targetIndex = -1;
-  for (let i = lyricsData.length - 1; i >= 0; i--) {
-    if (audioTime >= lyricsData[i].time) {
-      targetIndex = i;
-      break;
-    }
-  }
+//   let targetIndex = -1;
+//   for (let i = lyricsData.length - 1; i >= 0; i--) {
+//     if (audioTime >= lyricsData[i].time) {
+//       targetIndex = i;
+//       break;
+//     }
+//   }
   
-  if (targetIndex !== currentLyricIndex) {
-    currentLyricIndex = targetIndex;
+//   if (targetIndex !== currentLyricIndex) {
+//     currentLyricIndex = targetIndex;
     
-    if (targetIndex >= 0) {
-      lyrics.value = lyricsData[targetIndex].text;
-    } else {
-      lyrics.value = "";
-    }
-  }
-}
+//     if (targetIndex >= 0) {
+//       lyrics.value = lyricsData[targetIndex].text;
+//     } else {
+//       lyrics.value = "";
+//     }
+//   }
+// }
 
 function resetLyrics() {
-  currentLyricIndex = -1;
-  if (lyrics) {
-    lyrics.value = "";
+
+    if (simpleControls) {
+    simpleControls.resetLyrics();
   }
+
+  // currentLyricIndex = -1;
+  // if (lyrics) {
+  //   lyrics.value = "";
+  // }
 }
 
 function resetGlitch() {
@@ -951,6 +963,11 @@ function startAnimation() {
   
   if (simpleControls) {
     simpleControls.updatePlayButton(true);
+  }
+  
+   if (simpleControls) {
+    simpleControls.updatePlayButton(true);
+    simpleControls.show();
   }
 
   window.dispatchEvent(new CustomEvent('animationStateChange', { detail: { isPlaying: true }}));
@@ -1304,8 +1321,17 @@ function animate(time) {
   if (deltaTime < 0.001) return;
   
   const audioTime = AudioController.getCurrentTime();
+
+  // Check for lyricson changes (only update if changed)
+  if (lyricsOnInput && simpleControls) {
+    const currentValue = lyricsOnInput.value;
+    if (currentValue !== lastLyricsOnValue) {
+      simpleControls.setLyricsEnabled(currentValue);
+      lastLyricsOnValue = currentValue;
+    }
+  }
   
-  updateLyrics(audioTime);
+  // updateLyrics(audioTime);
   updateGlitch(audioTime);
   
   stateMachine.update(audioTime);
@@ -1431,41 +1457,50 @@ function animate(time) {
   camera.position.copy(baseCameraPos);
   
   // Check if song finished
-  const audioDuration = AudioController.getAudioDuration();
-  if (audioDuration > 0) {
-    const isFinished = audioTime >= audioDuration - 0.1;
-    
-    if (isFinished && isAnimating) {
-      isAnimating = false;
+const audioDuration = AudioController.getAudioDuration();
+if (audioDuration > 0) {
+  const isFinished = audioTime >= audioDuration - 0.1;
+  
+  if (isFinished && isAnimating) {
+    isAnimating = false;
 
-      if (finishedInput) {
-        finishedInput.value = true;
-      }
-      
-      if (playingInput) {
-        playingInput.value = false;
-      }
-
-      resetLyrics();
-      resetGlitch();
-      
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-        animationId = null;
-      }
-      
-      AudioController.reset();
-      
-      if (stoppedInput) {
-        stoppedInput.value = true;
-      }
-      
-      if (simpleControls) {
-        simpleControls.updatePlayButton(false);
-      }
-      
-      return;
+    if (finishedInput) {
+      finishedInput.value = true;
     }
+    
+    if (playingInput) {
+      playingInput.value = false;
+    }
+
+    // Reset lyrics in SimpleControls
+    if (simpleControls) {
+      simpleControls.resetLyrics();
+    }
+    resetGlitch();
+
+     if (simpleControls) {
+        simpleControls.hide();
+        simpleControls.resetLyrics();
+      }
+      
+    
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+    
+    AudioController.reset();
+    
+    if (stoppedInput) {
+      stoppedInput.value = true;
+    }
+    
+    if (simpleControls) {
+      simpleControls.updatePlayButton(false);
+    }
+    
+    return;
+  }
   }
 
   if (scene && camera) composer.render();

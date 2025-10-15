@@ -1,4 +1,4 @@
-// simple-controls.js - Simple HTML controls to work alongside Rive
+// simple-controls.js - Simple HTML controls with lyrics display
 import * as AudioController from './audioController.js';
 
 class SimpleControls {
@@ -7,14 +7,19 @@ class SimpleControls {
     this.playButton = null;
     this.scrubber = null;
     this.scrubberFill = null;
+    this.lyricsDisplay = null;
     this.isDragging = false;
     this.onPlayPauseCallback = null;
     this.onSeekCallback = null;
+    this.currentLyricIndex = -1;
+    this.lyricsData = [];
+    this.lyricsEnabled = true; // Default to true, will be controlled by Rive
   }
   
-  init(onPlayPause, onSeek) {
+  init(onPlayPause, onSeek, lyricsData = []) {
     this.onPlayPauseCallback = onPlayPause;
     this.onSeekCallback = onSeek;
+    this.lyricsData = lyricsData;
     this.createControls();
     this.setupEventListeners();
     this.updateLoop();
@@ -25,6 +30,9 @@ class SimpleControls {
     this.container = document.createElement('div');
     this.container.className = 'simple-controls';
     this.container.innerHTML = `
+      <!-- Lyrics Display -->
+      <div class="lyrics-display" id="lyricsDisplay"></div>
+      
       <!-- Play/Pause Button with Image -->
       <button class="simple-play-btn" id="simplePlayBtn" aria-label="Play">
         <img src="images/playbutton.png" alt="Play/Pause" class="play-btn-image" />
@@ -49,11 +57,19 @@ class SimpleControls {
     this.scrubber = document.getElementById('simpleScrubber');
     this.scrubberFill = document.getElementById('scrubberFill');
     this.scrubberHandle = document.getElementById('scrubberHandle');
+    this.lyricsDisplay = document.getElementById('lyricsDisplay');
   }
   
   addStyles() {
     const style = document.createElement('style');
     style.textContent = `
+      @font-face {
+        font-family: 'Pixel';
+        src: url('fonts/pixel.woff2') format('woff2');
+        font-weight: normal;
+        font-style: normal;
+      }
+      
       .simple-controls {
         position: fixed;
         bottom: 90px;
@@ -72,6 +88,31 @@ class SimpleControls {
         filter: 
             drop-shadow(2px 0 0 rgba(255, 0, 0, 0.5))
             drop-shadow(-2px 0 0 rgba(0, 255, 255, 0.5));
+      }
+      
+      /* Lyrics Display */
+      .lyrics-display {
+        position: absolute;
+        bottom: calc(100% + 30px); /* 30px above the scrubber */
+        left: 50%;
+        transform: translateX(-50%);
+        color: white;
+        font-family: 'Pixel', monospace;
+        font-size: 24px;
+        text-align: center;
+        min-height: 30px;
+        padding: 10px 20px;
+        white-space: nowrap;
+        text-shadow: 
+          2px 2px 0 rgba(255, 0, 0, 0.5),
+          -2px -2px 0 rgba(0, 255, 255, 0.5);
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: crisp-edges;
+      }
+      
+      .lyrics-display:empty {
+        opacity: 0;
       }
       
       /* Play Button with Image */
@@ -178,6 +219,13 @@ class SimpleControls {
           gap: 20px;
         }
         
+        .lyrics-display {
+          font-size: 18px;
+          padding: 8px 16px;
+          bottom: calc(100% + 20px); /* Slightly closer on mobile */
+          font-family: 'Pixel', monospace;
+        }
+        
         .play-btn-image {
           width: 80px;
           height: 80px;
@@ -252,6 +300,9 @@ class SimpleControls {
       const duration = AudioController.getAudioDuration();
       const seekTime = duration * percentage;
       this.onSeekCallback(seekTime);
+      
+      // Update lyrics immediately when seeking
+      this.updateLyrics(seekTime);
     }
   }
   
@@ -270,23 +321,77 @@ class SimpleControls {
       this.playButton.classList.remove('playing');
       this.playButton.setAttribute('aria-label', 'Play');
     }
+  }
+  
+  updateLyrics(audioTime) {
+    if (!this.lyricsDisplay || !this.lyricsData.length) return;
     
-    // Optionally, you can swap images if you have separate play/pause images
-    // const img = this.playButton.querySelector('.play-btn-image');
-    // img.src = isPlaying ? 'pausebutton.png' : 'playbutton.png';
+    // Hide lyrics if disabled
+    if (!this.lyricsEnabled) {
+      this.lyricsDisplay.style.display = 'none';
+      return;
+    } else {
+      this.lyricsDisplay.style.display = 'block';
+    }
+    
+    let targetIndex = -1;
+    for (let i = this.lyricsData.length - 1; i >= 0; i--) {
+      if (audioTime >= this.lyricsData[i].time) {
+        targetIndex = i;
+        break;
+      }
+    }
+    
+    if (targetIndex !== this.currentLyricIndex) {
+      this.currentLyricIndex = targetIndex;
+      
+      if (targetIndex >= 0) {
+        const newLyric = this.lyricsData[targetIndex].text;
+        this.lyricsDisplay.textContent = newLyric;
+      } else {
+        this.lyricsDisplay.textContent = '';
+      }
+    }
+  }
+  
+  setLyricsEnabled(enabled) {
+    this.lyricsEnabled = enabled;
+    if (this.lyricsDisplay) {
+      this.lyricsDisplay.style.display = enabled ? 'block' : 'none';
+    }
+  }
+  
+  resetLyrics() {
+    this.currentLyricIndex = -1;
+    if (this.lyricsDisplay) {
+      this.lyricsDisplay.textContent = '';
+    }
+  }
+  
+  setLyricsData(lyricsData) {
+    this.lyricsData = lyricsData;
+    this.resetLyrics();
+  }
+  
+  setLyricsEnabled(enabled) {
+    this.lyricsEnabled = enabled;
+    if (this.lyricsDisplay) {
+      this.lyricsDisplay.style.display = enabled ? 'block' : 'none';
+    }
   }
   
   updateLoop() {
     const update = () => {
-      if (!this.isDragging) {
-        const currentTime = AudioController.getCurrentTime();
-        const duration = AudioController.getAudioDuration();
-        
-        if (duration > 0) {
-          const percentage = currentTime / duration;
-          this.updateScrubberPosition(percentage);
-        }
+      const currentTime = AudioController.getCurrentTime();
+      const duration = AudioController.getAudioDuration();
+      
+      if (!this.isDragging && duration > 0) {
+        const percentage = currentTime / duration;
+        this.updateScrubberPosition(percentage);
       }
+      
+      // Update lyrics
+      this.updateLyrics(currentTime);
       
       requestAnimationFrame(update);
     };
