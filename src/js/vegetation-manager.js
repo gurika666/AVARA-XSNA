@@ -17,8 +17,8 @@ const TREE_ROWS = 6;
 const TREES_PER_ROW_ATTEMPTS = 200;
 
 // Eyes configuration
-const EYES_ROWS = 4; // Control overall number of eyes in scene
-const EYES_PER_ROW_ATTEMPTS = 100;
+const EYES_ROWS = 1; // Control overall number of eyes in scene
+const EYES_PER_ROW_ATTEMPTS = 10;
 const EYES_SPREAD = 15;
 
 // State
