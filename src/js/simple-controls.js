@@ -5,6 +5,7 @@ class SimpleControls {
   constructor() {
     this.container = null;
     this.playButton = null;
+    this.playButtonImage = null;
     this.scrubber = null;
     this.scrubberFill = null;
     this.lyricsDisplay = null;
@@ -35,7 +36,7 @@ class SimpleControls {
       
       <!-- Play/Pause Button with Image -->
       <button class="simple-play-btn" id="simplePlayBtn" aria-label="Play">
-        <img src="images/playbutton.png" alt="Play/Pause" class="play-btn-image" />
+        <img src="images/playbutton.png" alt="Play/Pause" class="play-btn-image" id="playBtnImage" />
       </button>
       
       <!-- Scrubber -->
@@ -54,6 +55,7 @@ class SimpleControls {
     
     // Get references
     this.playButton = document.getElementById('simplePlayBtn');
+    this.playButtonImage = document.getElementById('playBtnImage');
     this.scrubber = document.getElementById('simpleScrubber');
     this.scrubberFill = document.getElementById('scrubberFill');
     this.scrubberHandle = document.getElementById('scrubberHandle');
@@ -145,16 +147,6 @@ class SimpleControls {
         image-rendering: -moz-crisp-edges;
         image-rendering: crisp-edges;
         transition: transform 0.1s ease;
-      }
-      
-      /* Optional: Add animation when playing */
-      .simple-play-btn.playing .play-btn-image {
-        animation: pulse 2s ease-in-out infinite;
-      }
-      
-      @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
       }
       
       /* 8-bit Scrubber */
@@ -313,13 +305,15 @@ class SimpleControls {
   }
   
   updatePlayButton(isPlaying) {
-    // Add or remove 'playing' class for visual feedback
-    if (isPlaying) {
-      this.playButton.classList.add('playing');
-      this.playButton.setAttribute('aria-label', 'Pause');
-    } else {
-      this.playButton.classList.remove('playing');
-      this.playButton.setAttribute('aria-label', 'Play');
+    // Swap button image based on playback state
+    if (this.playButtonImage) {
+      if (isPlaying) {
+        this.playButtonImage.src = 'images/stopbutton.png';
+        this.playButton.setAttribute('aria-label', 'Stop');
+      } else {
+        this.playButtonImage.src = 'images/playbutton.png';
+        this.playButton.setAttribute('aria-label', 'Play');
+      }
     }
   }
   
@@ -371,13 +365,6 @@ class SimpleControls {
   setLyricsData(lyricsData) {
     this.lyricsData = lyricsData;
     this.resetLyrics();
-  }
-  
-  setLyricsEnabled(enabled) {
-    this.lyricsEnabled = enabled;
-    if (this.lyricsDisplay) {
-      this.lyricsDisplay.style.display = enabled ? 'block' : 'none';
-    }
   }
   
   updateLoop() {
